@@ -28,10 +28,11 @@ export default function HomePage() {
           <div className="hidden md:flex items-center gap-6 text-sm">
             <Link href="/apply" className="hover:text-mkopa-green transition">Apply</Link>
             <Link href="/dashboard" className="hover:text-mkopa-green transition">Dashboard</Link>
-            <Link href="/login" className="hover:text-mkopa-green transition">Admin</Link>
+            <Link href="/login" className="hover:text-mkopa-green transition">Sign In</Link>
+            <Link href="/signup" className="gradient-mkopa text-white px-4 py-2 rounded-lg font-semibold text-sm">Sign Up</Link>
           </div>
-          <Link href="/apply" className="gradient-mkopa text-white px-5 py-2 rounded-lg text-sm font-semibold hover:opacity-90 transition">
-            Apply Now
+          <Link href="/signup" className="md:hidden gradient-mkopa text-white px-5 py-2 rounded-lg text-sm font-semibold hover:opacity-90 transition">
+            Get Started
           </Link>
         </div>
       </nav>
@@ -45,11 +46,11 @@ export default function HomePage() {
               From KES 5,000 to 500,000 — personal, business, emergency & education loans with fast mobile money disbursement.
             </p>
             <div className="mt-8 flex flex-wrap gap-4">
-              <Link href="/apply" className="bg-mkopa-orange text-white px-8 py-3 rounded-lg font-semibold hover:opacity-90 transition flex items-center gap-2">
-                Apply Now <ArrowRight className="w-5 h-5" />
+              <Link href="/signup" className="bg-mkopa-orange text-white px-8 py-3 rounded-lg font-semibold hover:opacity-90 transition flex items-center gap-2">
+                Get Started <ArrowRight className="w-5 h-5" />
               </Link>
-              <Link href="/dashboard" className="bg-white/10 text-white px-8 py-3 rounded-lg font-semibold hover:bg-white/20 transition">
-                Check Status
+              <Link href="/login" className="bg-white/10 text-white px-8 py-3 rounded-lg font-semibold hover:bg-white/20 transition">
+                Sign In
               </Link>
             </div>
           </div>
@@ -77,9 +78,31 @@ export default function HomePage() {
                 <h3 className="font-bold text-lg">{p.name}</h3>
                 <p className="text-mkopa-green font-semibold mt-1">{p.rate}% p.a.</p>
                 <p className="text-gray-500 text-sm mt-1">KES {p.range}</p>
-                <Link href="/apply" className="mt-4 inline-flex items-center text-sm text-mkopa-green font-semibold hover:underline">
+                <Link href="/signup" className="mt-4 inline-flex items-center text-sm text-mkopa-green font-semibold hover:underline">
                   Apply <ChevronRight className="w-4 h-4" />
                 </Link>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works */}
+      <section className="py-20">
+        <div className="max-w-7xl mx-auto px-4">
+          <h2 className="text-3xl font-bold text-center mb-12">How It Works</h2>
+          <div className="grid sm:grid-cols-3 gap-8">
+            {[
+              { step: '1', title: 'Create Account', desc: 'Sign up with your email, phone number and set a password. It takes less than a minute.' },
+              { step: '2', title: 'Apply & Upload KYC', desc: 'Choose your loan product, fill in details, and upload your identification documents securely.' },
+              { step: '3', title: 'Get Funded', desc: 'Receive approval within 24 hours. Funds are disbursed directly to your M-Pesa or mobile money account.' },
+            ].map((item) => (
+              <div key={item.step} className="text-center">
+                <div className="w-14 h-14 gradient-mkopa rounded-full flex items-center justify-center text-white font-bold text-xl mx-auto mb-4">
+                  {item.step}
+                </div>
+                <h3 className="font-bold text-lg mb-2">{item.title}</h3>
+                <p className="text-gray-500 text-sm">{item.desc}</p>
               </div>
             ))}
           </div>
@@ -100,6 +123,22 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* CTA */}
+      <section className="py-20 bg-gray-50">
+        <div className="max-w-3xl mx-auto px-4 text-center">
+          <h2 className="text-3xl font-bold mb-4">Ready to Get Started?</h2>
+          <p className="text-gray-500 mb-8">Create your free account and apply for a loan in minutes. No paperwork, no branch visits.</p>
+          <div className="flex flex-wrap justify-center gap-4">
+            <Link href="/signup" className="gradient-mkopa text-white px-8 py-3 rounded-lg font-semibold hover:opacity-90 transition flex items-center gap-2">
+              Create Free Account <ArrowRight className="w-5 h-5" />
+            </Link>
+            <Link href="/login" className="border border-gray-300 px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition">
+              Sign In
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* Footer */}
       <footer className="py-12 bg-gray-900 text-gray-400">
         <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row justify-between gap-8">
@@ -109,9 +148,10 @@ export default function HomePage() {
           </div>
           <div className="flex gap-12 text-sm">
             <div className="space-y-2">
+              <Link href="/signup" className="block hover:text-white">Sign Up</Link>
+              <Link href="/login" className="block hover:text-white">Sign In</Link>
               <Link href="/apply" className="block hover:text-white">Apply</Link>
               <Link href="/dashboard" className="block hover:text-white">Dashboard</Link>
-              <Link href="/login" className="block hover:text-white">Admin Login</Link>
             </div>
           </div>
         </div>

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { LOAN_PRODUCTS, calculateLoanFee, calculateRepayment, formatKES } from '@/lib/utils';
 import { ArrowLeft, ArrowRight, CheckCircle, Loader2, Upload } from 'lucide-react';
@@ -9,6 +10,7 @@ const STEPS = ['Product', 'Details', 'KYC', 'Review'];
 
 export default function ApplyPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -25,10 +27,33 @@ export default function ApplyPage() {
   const [kycDocs, setKycDocs] = useState<{ national_id?: string; passport?: string; selfie?: string }>({});
   const [uploading, setUploading] = useState('');
 
+  // Pre-fill from session when available
+  useEffect(() => {
+    if (session?.user) {
+      setName(session.user.name || '');
+      setEmail(session.user.email || '');
+      const phoneVal = (session.user as { phone?: string }).phone;
+      if (phoneVal) setPhone(phoneVal);
+    }
+    // Only run when session changes (once on mount)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+
   const selectedProduct = LOAN_PRODUCTS.find((p) => p.id === product);
   const amt = parseInt(amount) || 0;
   const fee = calculateLoanFee(amt);
   const repayment = selectedProduct && amt && parseInt(term) ? calculateRepayment(amt, selectedProduct.rate, parseInt(term)) : null;
+
+  // Get user ID from session or from the API response
+  const [userId, setUserId] = useState<number>(1);
+
+  // Update userId from session
+  useEffect(() => {
+    if (session?.user) {
+      const id = (session.user as { id?: string }).id;
+      if (id) setUserId(parseInt(id));
+    }
+  }, [session]);
 
   async function handleFileUpload(file: File, docType: 'national_id' | 'passport' | 'selfie') {
     setUploading(docType);
@@ -37,7 +62,7 @@ export default function ApplyPage() {
       const res = await fetch('/api/kyc/upload-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: 1, documentType: docType, contentType: file.type }),
+        body: JSON.stringify({ userId, documentType: docType, contentType: file.type }),
       });
       const { uploadUrl, r2Key } = await res.json();
 
@@ -45,7 +70,9 @@ export default function ApplyPage() {
       await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
 
       setKycDocs((prev) => ({ ...prev, [docType]: r2Key }));
-    } catch { setError('Upload failed'); }
+    } catch {
+      setError('Upload failed. You can still submit your application without documents.');
+    }
     setUploading('');
   }
 
@@ -59,9 +86,14 @@ export default function ApplyPage() {
         body: JSON.stringify({ name, email, phone, amount: amt, termMonths: parseInt(term), productType: product, purpose }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error || 'Failed'); return; }
+      if (!res.ok) {
+        setError(data.error || 'Failed');
+        return;
+      }
       setSubmitted(true);
-    } catch { setError('Network error'); }
+    } catch {
+      setError('Network error');
+    }
     setLoading(false);
   }
 
@@ -72,7 +104,9 @@ export default function ApplyPage() {
           <CheckCircle className="w-16 h-16 text-mkopa-green mx-auto mb-4" />
           <h1 className="text-2xl font-bold mb-2">Application Submitted!</h1>
           <p className="text-gray-500 mb-6">We&apos;ll review your application and notify you via email.</p>
-          <button onClick={() => router.push('/dashboard')} className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold">Track Status</button>
+          <button onClick={() => router.push('/dashboard')} className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold">
+            Track Status
+          </button>
         </div>
       </div>
     );
@@ -82,8 +116,19 @@ export default function ApplyPage() {
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center gap-3 mb-8">
-          <button onClick={() => step > 0 ? setStep(step - 1) : router.push('/')} className="p-2 hover:bg-gray-200 rounded-lg"><ArrowLeft className="w-5 h-5" /></button>
+          <button onClick={() => step > 0 ? setStep(step - 1) : router.push('/')} className="p-2 hover:bg-gray-200 rounded-lg">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
           <h1 className="text-xl font-bold">Apply for a Loan</h1>
+          {/* Show session status */}
+          {status === 'authenticated' && (
+            <span className="ml-auto text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">Signed in</span>
+          )}
+          {status === 'unauthenticated' && (
+            <button onClick={() => router.push('/signup')} className="ml-auto text-xs text-mkopa-green font-semibold hover:underline">
+              Sign up to track your loan
+            </button>
+          )}
         </div>
 
         {/* Steps */}
@@ -174,7 +219,7 @@ export default function ApplyPage() {
           {step === 2 && (
             <div className="space-y-4">
               <h2 className="font-bold text-lg mb-2">Upload KYC Documents</h2>
-              <p className="text-sm text-gray-500">Upload your documents for verification. Files go directly to secure cloud storage.</p>
+              <p className="text-sm text-gray-500">Upload your documents for verification. Files go directly to secure cloud storage. You can skip this step and submit documents later from your dashboard.</p>
               {(['national_id', 'passport', 'selfie'] as const).map((docType) => (
                 <div key={docType} className="border-2 border-dashed rounded-xl p-6 text-center">
                   {kycDocs[docType] ? (

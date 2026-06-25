@@ -1,9 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { formatKES } from '@/lib/utils';
-import { Search, Loader2, FileText } from 'lucide-react';
+import { Loader2, FileText, LogOut, ArrowRight } from 'lucide-react';
+import { signOut } from 'next-auth/react';
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-700',
@@ -11,23 +14,81 @@ const STATUS_COLORS: Record<string, string> = {
   rejected: 'bg-red-100 text-red-700',
 };
 
+interface LoanData {
+  id: number;
+  amount: number;
+  termMonths: number;
+  productType: string;
+  status: string;
+  createdAt: string;
+}
+
+interface KycData {
+  id: number;
+  documentType: string;
+  status: string;
+  uploadedAt: string;
+}
+
 export default function DashboardPage() {
-  const [email, setEmail] = useState('');
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<{user: {id: number; name: string; email: string; phone: string}; loans: {id: number; amount: number; termMonths: number; productType: string; status: string; createdAt: string}[]; kyc: {id: number; documentType: string; status: string; uploadedAt: string}[]} | null>(null);
+  const [data, setData] = useState<{
+    user: { id: number; name: string; email: string; phone: string };
+    loans: LoanData[];
+    kyc: KycData[];
+  } | null>(null);
   const [error, setError] = useState('');
 
-  async function handleSearch() {
-    if (!email) return;
+  // Redirect unauthenticated users to login
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login?message=Please sign in to access your dashboard');
+    }
+  }, [status, router]);
+
+  // Fetch dashboard data when session is available
+  useEffect(() => {
+    if (session?.user?.email) {
+      fetchDashboard(session.user.email);
+    }
+  }, [session]);
+
+  async function fetchDashboard(email: string) {
     setLoading(true);
     setError('');
     try {
       const res = await fetch(`/api/dashboard?email=${encodeURIComponent(email)}`);
       const json = await res.json();
-      if (!res.ok) { setError(json.error || 'Not found'); setData(null); return; }
+      if (!res.ok) {
+        setError(json.error || 'Not found');
+        setData(null);
+        return;
+      }
       setData(json);
-    } catch { setError('Network error'); }
+    } catch {
+      setError('Network error');
+    }
     setLoading(false);
+  }
+
+  // Loading state while checking auth
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Loader2 className="w-8 h-8 animate-spin text-mkopa-green" />
+      </div>
+    );
+  }
+
+  // Not authenticated — will redirect via useEffect
+  if (!session) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Loader2 className="w-8 h-8 animate-spin text-mkopa-green" />
+      </div>
+    );
   }
 
   return (
@@ -35,39 +96,63 @@ export default function DashboardPage() {
       {/* Nav */}
       <nav className="bg-white border-b px-4 h-16 flex items-center justify-between">
         <Link href="/" className="font-bold text-xl"><span className="text-mkopa-green">M-Kopa</span> Loans</Link>
-        <Link href="/apply" className="gradient-mkopa text-white px-4 py-2 rounded-lg text-sm font-semibold">Apply</Link>
+        <div className="flex items-center gap-4">
+          <Link href="/apply" className="gradient-mkopa text-white px-4 py-2 rounded-lg text-sm font-semibold">Apply</Link>
+          <button
+            onClick={() => signOut({ callbackUrl: '/' })}
+            className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700"
+          >
+            <LogOut className="w-4 h-4" /> Sign Out
+          </button>
+        </div>
       </nav>
 
       <div className="max-w-3xl mx-auto px-4 py-12">
-        <h1 className="text-2xl font-bold mb-2">Loan Dashboard</h1>
-        <p className="text-gray-500 mb-8">Enter your email to view your loan status</p>
-
-        <div className="flex gap-3 mb-8">
-          <input
-            type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            placeholder="you@email.com" className="flex-1 border rounded-lg px-4 py-2.5 text-sm"
-          />
-          <button onClick={handleSearch} disabled={loading} className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-40 flex items-center gap-2">
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Search
-          </button>
+        {/* Welcome section */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold mb-1">Welcome, {session.user?.name || 'User'}</h1>
+          <p className="text-gray-500 text-sm">{session.user?.email}</p>
         </div>
+
+        {loading && !data && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-6 h-6 animate-spin text-mkopa-green" />
+          </div>
+        )}
 
         {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
 
         {data && (
           <div className="space-y-6">
-            {/* User card */}
-            <div className="bg-white rounded-xl p-6 shadow-sm">
-              <h2 className="font-bold text-lg">{data.user.name}</h2>
-              <p className="text-gray-500 text-sm">{data.user.email} · {data.user.phone}</p>
+            {/* Quick Actions */}
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Link href="/apply" className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition border flex items-center justify-between group">
+                <div>
+                  <h3 className="font-bold text-lg">Apply for a Loan</h3>
+                  <p className="text-gray-500 text-sm mt-1">Start a new loan application</p>
+                </div>
+                <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-mkopa-green transition" />
+              </Link>
+              <div className="bg-white rounded-xl p-6 shadow-sm border">
+                <h3 className="font-bold text-lg">Account Status</h3>
+                <p className="text-gray-500 text-sm mt-1">
+                  {data.kyc.length > 0
+                    ? `${data.kyc.filter(d => d.status === 'approved').length}/${data.kyc.length} KYC docs approved`
+                    : 'No KYC documents uploaded yet'}
+                </p>
+              </div>
             </div>
 
             {/* Loans */}
             <div>
               <h3 className="font-bold mb-3">Your Loans</h3>
               {data.loans.length === 0 ? (
-                <p className="text-gray-400 text-sm">No loans yet. <Link href="/apply" className="text-mkopa-green underline">Apply now</Link></p>
+                <div className="bg-white rounded-xl p-8 shadow-sm text-center">
+                  <p className="text-gray-400 text-sm mb-4">You haven&apos;t applied for any loans yet.</p>
+                  <Link href="/apply" className="gradient-mkopa text-white px-6 py-2 rounded-lg text-sm font-semibold inline-block">
+                    Apply Now
+                  </Link>
+                </div>
               ) : (
                 <div className="space-y-3">
                   {data.loans.map((loan) => (

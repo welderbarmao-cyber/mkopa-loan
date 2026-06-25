@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --mkopa-green: #009739;
+  --mkopa-orange: #E87722;
+  --mkopa-dark: #005A2B;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+@layer utilities {
+  .gradient-mkopa {
+    background: linear-gradient(135deg, #009739 0%, #005A2B 100%);
+  }
+}

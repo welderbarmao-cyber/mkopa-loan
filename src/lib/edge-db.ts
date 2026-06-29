@@ -39,29 +39,42 @@ const KYC_KEY = 'kyc_uploads';
 const COUNTERS_KEY = 'counters';
 
 // Use the REST API to write to Edge Config
+// Vercel v9 endpoint: PATCH /v9/edge-config/{id}/items?teamId={teamId}
+// Body: { "items": [{ "operation": "upsert", "key": "key", "value": value }] }
+// Requires Vercel API token (Edge Config tokens are read-only)
 async function writeEdgeConfig(key: string, value: unknown): Promise<void> {
   const ecId = process.env.EDGE_CONFIG;
-  const token = process.env.EDGE_CONFIG_ACCESS_TOKEN;
+  const vercelToken = process.env.VERCEL_TOKEN;
+  const teamId = process.env.VERCEL_TEAM_ID;
 
-  if (!ecId || !token) {
-    throw new Error('EDGE_CONFIG or EDGE_CONFIG_ACCESS_TOKEN not set');
+  if (!ecId || !vercelToken || !teamId) {
+    throw new Error('EDGE_CONFIG, VERCEL_TOKEN, or VERCEL_TEAM_ID not set');
   }
 
-  // Determine team ID from the user's default team
-  // The Edge Config belongs to the team, so we use the Vercel API
-  const url = `https://api.vercel.com/v1/edge-config/${ecId}/items?teamId=team_PbmEdMbmweJuU86JLZXXjMWD`;
+  // Extract the Edge Config ID from the connection string
+  // Connection string format: https://edge-config.vercel.com/<id>?token=<token>
+  const idMatch = ecId.match(/ecfg_[a-zA-Z0-9]+/);
+  if (!idMatch) {
+    throw new Error('Invalid EDGE_CONFIG connection string - cannot extract ID');
+  }
+  const ecfgId = idMatch[0];
+
+  // Use the Vercel API v9 endpoint with the Vercel token
+  const url = `https://api.vercel.com/v9/edge-config/${ecfgId}/items?teamId=${teamId}`;
 
   const response = await fetch(url, {
-    method: 'POST',
+    method: 'PATCH',
     headers: {
-      'Authorization': `Bearer ${token}`,
+      'Authorization': `Bearer ${vercelToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify([{
-      operation: 'upsert',
-      key,
-      value,
-    }]),
+    body: JSON.stringify({
+      items: [{
+        operation: 'upsert',
+        key,
+        value,
+      }],
+    }),
   });
 
   if (!response.ok) {

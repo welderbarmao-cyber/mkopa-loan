@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, ArrowLeft, Smartphone, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
+import { Loader2, ArrowLeft, Smartphone, CheckCircle, AlertCircle, XCircle, ExternalLink, Shield } from 'lucide-react';
 import { formatKES } from '@/lib/utils';
 import { detectNetwork } from '@/lib/xdigitex';
 
@@ -22,9 +22,10 @@ function PaymentContent() {
   const [error, setError] = useState('');
   const [paymentData, setPaymentData] = useState<{
     reference: string;
-    stkPushSent: boolean;
-    stkStatus: string;
-    correspondent: string;
+    redirect_url?: string;
+    paymentType: string;
+    stkStatus?: string;
+    correspondent?: string;
     message: string;
   } | null>(null);
 
@@ -70,8 +71,8 @@ function PaymentContent() {
       setError('Please enter a valid phone number');
       return;
     }
-    if (network === 'unknown') {
-      setError('Unable to detect network. Please check your phone number.');
+    if (network === 'unknown' || network === 'telkom') {
+      setError('Please enter a valid Safaricom or Airtel phone number');
       return;
     }
 
@@ -90,18 +91,12 @@ function PaymentContent() {
       }
       setPaymentData({
         reference: data.reference,
-        stkPushSent: data.stkPushSent,
+        redirect_url: data.redirect_url,
+        paymentType: data.paymentType,
         stkStatus: data.stkStatus,
-        correspondent: data.correspondent || '',
-        message: data.message || 'STK push sent.',
+        correspondent: data.correspondent,
+        message: data.message,
       });
-
-      // If STK push was sent, redirect to status page after 3 seconds
-      if (data.stkPushSent || data.reference) {
-        setTimeout(() => {
-          router.push(`/payment/status?reference=${data.reference}&loanId=${loanId}`);
-        }, 3000);
-      }
     } catch {
       setError('Network error. Please try again.');
     }
@@ -147,7 +142,7 @@ function PaymentContent() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-md mx-auto">
+      <div className="max-w-2xl mx-auto">
         <div className="flex items-center gap-3 mb-6">
           <Link href="/dashboard" className="p-2 hover:bg-gray-200 rounded-lg">
             <ArrowLeft className="w-5 h-5" />
@@ -176,10 +171,10 @@ function PaymentContent() {
           </div>
         </div>
 
-        {/* Payment Method */}
+        {/* Payment Form / Checkout */}
         {!paymentData ? (
           <div className="bg-white rounded-xl shadow-sm p-5">
-            <h2 className="font-bold mb-3">STK Push Payment</h2>
+            <h2 className="font-bold mb-3">Mobile Money Payment</h2>
 
             <div className="mb-4">
               <label className="block text-sm font-medium mb-1">Phone Number</label>
@@ -193,8 +188,9 @@ function PaymentContent() {
               {phone && (
                 <p className="text-xs mt-1">
                   Detected: <span className="font-semibold capitalize text-mkopa-green">{network}</span>
-                  {network === 'telkom' && <span className="text-orange-600"> (Telkom not supported)</span>}
-                  {network === 'unknown' && <span className="text-red-500"> (unrecognized)</span>}
+                  {(network === 'telkom' || network === 'unknown') && (
+                    <span className="text-red-500"> (Safaricom or Airtel only)</span>
+                  )}
                 </p>
               )}
             </div>
@@ -205,22 +201,60 @@ function PaymentContent() {
               className="w-full gradient-mkopa text-white py-3 rounded-lg font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
             >
               <Smartphone className="w-5 h-5" />
-              {initiating ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Send STK Push'}
+              {initiating ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Proceed to Payment'}
             </button>
 
             {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
 
             <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-xs text-blue-700 dark:text-blue-400">
-              <p className="font-semibold mb-1">How it works:</p>
-              <ol className="list-decimal list-inside space-y-1">
-                <li>Enter your M-Pesa/Airtel phone number</li>
-                <li>Click &quot;Send STK Push&quot;</li>
-                <li>Check your phone for the payment prompt</li>
-                <li>Enter your M-Pesa/Airtel PIN to complete</li>
-              </ol>
+              <div className="flex items-center gap-2 mb-1">
+                <Shield className="w-4 h-4" />
+                <p className="font-semibold">Secure Payment</p>
+              </div>
+              <p>Payment is processed through a secure checkout. Your financial details are encrypted and never stored.</p>
+            </div>
+          </div>
+        ) : paymentData.paymentType === 'iframe' && paymentData.redirect_url ? (
+          /* Embedded Checkout - stays within the app */
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="p-4 border-b flex items-center justify-between">
+              <div>
+                <h2 className="font-bold text-sm">Secure Payment Checkout</h2>
+                <p className="text-xs text-gray-500">Ref: {paymentData.reference}</p>
+              </div>
+              <button
+                onClick={() => setPaymentData(null)}
+                className="text-xs text-gray-500 hover:text-gray-700"
+              >
+                Cancel
+              </button>
+            </div>
+            {/* Embed the checkout page in an iframe - user stays in our app */}
+            <iframe
+              src={paymentData.redirect_url}
+              className="w-full"
+              style={{ height: '600px', border: 'none' }}
+              title="Secure Payment Checkout"
+            />
+            <div className="p-3 border-t bg-gray-50 flex items-center justify-between">
+              <a
+                href={paymentData.redirect_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-mkopa-green font-semibold flex items-center gap-1 hover:underline"
+              >
+                <ExternalLink className="w-3 h-3" /> Open in new tab
+              </a>
+              <Link
+                href={`/payment/status?reference=${paymentData.reference}&loanId=${loanId}`}
+                className="text-xs text-mkopa-green font-semibold hover:underline"
+              >
+                I&apos;ve completed payment →
+              </Link>
             </div>
           </div>
         ) : (
+          /* STK Push Status */
           <div className="bg-white rounded-xl shadow-sm p-6 text-center">
             {paymentData.stkStatus === 'REJECTED' ? (
               <>
@@ -252,10 +286,12 @@ function PaymentContent() {
                   <p className="text-xs text-gray-500">Reference</p>
                   <p className="font-mono text-sm font-semibold">{paymentData.reference}</p>
                 </div>
-                <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Redirecting to payment status...</span>
-                </div>
+                <Link
+                  href={`/payment/status?reference=${paymentData.reference}&loanId=${loanId}`}
+                  className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold inline-block"
+                >
+                  Check Payment Status
+                </Link>
               </>
             )}
           </div>

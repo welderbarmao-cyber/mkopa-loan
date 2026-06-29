@@ -2,13 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { findUserById, findLoanById, updateLoan } from '@/lib/edge-db';
-import { initiatePayment, normalizePhone } from '@/lib/xdigitex';
+import { initiatePayment, normalizePhone, detectNetwork } from '@/lib/xdigitex';
 import { z } from 'zod';
 
 const initiateSchema = z.object({
   loanId: z.number(),
-  // We use 'mobile' gateway for actual STK push (auto-detects Safaricom/Airtel)
-  // safaricom/airtel gateways use Pesapal hosted checkout (redirect), not STK push
   phone: z.string().min(10),
 });
 
@@ -37,14 +35,18 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
     const normalizedPhone = normalizePhone(body.phone);
+    const network = detectNetwork(body.phone);
 
-    // ALWAYS use 'mobile' gateway for actual STK push
-    // The mobile gateway uses PawaPay which sends real STK push to the phone
-    // It auto-detects Safaricom (M-Pesa) or Airtel Money from the phone number
+    // Determine the best gateway based on network
+    // safaricom/airtel gateways use Pesapal (redirect_url) - more reliable for hosted checkout
+    // mobile gateway uses PawaPay (actual STK push) - may be rejected for some numbers
+    // We'll use safaricom/airtel gateways and embed the checkout in an iframe within the app
+    const gateway = network === 'safaricom' ? 'safaricom' : network === 'airtel' ? 'airtel' : 'safaricom';
+
     const payment = await initiatePayment({
       amount: loan.activationFee,
       currency: 'KES',
-      gateway: 'mobile',
+      gateway,
       phone: normalizedPhone,
       email: user.email,
       first_name: user.name.split(' ')[0],
@@ -60,23 +62,29 @@ export async function POST(req: NextRequest) {
       activationFeeReference: payment.reference,
     });
 
-    // Check if STK push was sent successfully
-    const stkSent = payment.pawa_status === 'ACCEPTED' || payment.pawa_status === 'PENDING';
-    const stkRejected = payment.pawa_status === 'REJECTED';
+    // For safaricom/airtel gateways: return redirect_url to embed in iframe
+    // For mobile gateway: STK push is sent to phone
+    const hasRedirectUrl = !!payment.redirect_url;
+    const hasStkPush = !!payment.deposit_id;
 
     return NextResponse.json({
       success: true,
       reference: payment.reference,
       gateway: payment.gateway,
       amount: loan.activationFee,
-      // For mobile gateway: STK push is sent directly to phone
-      stkPushSent: stkSent,
+      // For safaricom/airtel: embed this in an iframe within the app
+      redirect_url: payment.redirect_url,
+      order_tracking_id: payment.order_tracking_id,
+      // For mobile: STK push status
+      stkPushSent: hasStkPush,
       stkStatus: payment.pawa_status,
       correspondent: payment.correspondent,
       checkout_url: payment.checkout_url,
-      message: stkRejected
-        ? 'STK push was rejected. Please check your phone number and try again.'
-        : 'STK push sent to your phone. Enter your M-Pesa/Airtel PIN to complete payment.',
+      // Payment method type for UI
+      paymentType: hasRedirectUrl ? 'iframe' : 'stk_push',
+      message: hasRedirectUrl
+        ? 'Complete payment in the secure checkout below.'
+        : 'STK push sent to your phone. Enter your PIN to complete.',
     });
   } catch (e: unknown) {
     if (e instanceof z.ZodError) {

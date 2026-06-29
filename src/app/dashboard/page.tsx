@@ -122,10 +122,10 @@ export default function DashboardPage() {
         </div>
       </nav>
 
-      <div className="max-w-5xl mx-auto px-4 py-8">
+      <div className="max-w-5xl mx-auto px-4 py-4">
         {/* Welcome */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold mb-1">Welcome, {session.user?.name || 'User'}</h1>
+        <div className="mb-4">
+          <h1 className="text-xl font-bold mb-1">Welcome, {session.user?.name || 'User'}</h1>
           <p className="text-gray-500 text-sm">{session.user?.email}</p>
         </div>
 
@@ -140,24 +140,24 @@ export default function DashboardPage() {
         {data && (
           <>
             {/* Progress Flow */}
-            <div className="bg-white rounded-xl p-6 shadow-sm mb-8">
-              <h2 className="font-bold text-lg mb-6">Your Loan Journey</h2>
-              <div className="grid sm:grid-cols-4 gap-4">
+            <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
+              <h2 className="font-bold text-sm mb-3">Your Loan Journey</h2>
+              <div className="grid grid-cols-4 gap-2">
                 {steps.map((step, i) => {
                   const isComplete = i < currentStep;
                   const isCurrent = i === currentStep;
                   const isLocked = i > currentStep;
                   return (
                     <div key={step.num} className="relative">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold mb-3 ${
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold mb-2 text-sm ${
                         isComplete ? 'bg-mkopa-green text-white' :
                         isCurrent ? 'bg-mkopa-orange text-white animate-pulse' :
                         'bg-gray-200 text-gray-400'
                       }`}>
-                        {isComplete ? <CheckCircle className="w-6 h-6" /> : step.num}
+                        {isComplete ? <CheckCircle className="w-4 h-4" /> : step.num}
                       </div>
-                      <h3 className={`font-semibold text-sm ${isLocked ? 'text-gray-400' : 'text-gray-900'}`}>{step.label}</h3>
-                      <p className={`text-xs mt-1 ${isLocked ? 'text-gray-300' : 'text-gray-500'}`}>{step.desc}</p>
+                      <h3 className={`font-semibold text-xs ${isLocked ? 'text-gray-400' : 'text-gray-900'}`}>{step.label}</h3>
+                      <p className={`text-xs mt-0.5 hidden sm:block ${isLocked ? 'text-gray-300' : 'text-gray-500'}`}>{step.desc}</p>
                     </div>
                   );
                 })}
@@ -165,11 +165,11 @@ export default function DashboardPage() {
             </div>
 
             {/* Status Cards */}
-            <div className="grid sm:grid-cols-3 gap-4 mb-8">
+            <div className="grid grid-cols-3 gap-3 mb-4">
               {/* KYC Status */}
-              <div className="bg-white rounded-xl p-5 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <ShieldCheck className="w-6 h-6 text-mkopa-green" />
+              <div className="bg-white rounded-xl p-3 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <ShieldCheck className="w-5 h-5 text-mkopa-green" />
                   <KycStatusBadge status={kycStatus} />
                 </div>
                 <h3 className="font-bold text-sm">KYC Verification</h3>
@@ -187,37 +187,37 @@ export default function DashboardPage() {
               </div>
 
               {/* Loan Limit */}
-              <div className="bg-white rounded-xl p-5 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <Wallet className="w-6 h-6 text-mkopa-orange" />
-                  <span className={`text-xs px-2 py-1 rounded-full font-semibold ${
+              <div className="bg-white rounded-xl p-3 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <Wallet className="w-5 h-5 text-mkopa-orange" />
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
                     loanLimit > 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
                   }`}>
                     {loanLimit > 0 ? 'Assigned' : 'Pending'}
                   </span>
                 </div>
                 <h3 className="font-bold text-sm">Loan Limit</h3>
-                <p className="text-2xl font-bold text-mkopa-green mt-1">
+                <p className="text-xl font-bold text-mkopa-green mt-1">
                   {loanLimit > 0 ? formatKES(loanLimit) : '—'}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {loanLimit > 0 ? 'You can borrow up to this amount' : 'Assigned after KYC approval'}
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {loanLimit > 0 ? 'Max you can borrow' : 'After KYC approval'}
                 </p>
               </div>
 
               {/* Active Loans */}
-              <div className="bg-white rounded-xl p-5 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <FileText className="w-6 h-6 text-blue-500" />
-                  <span className="text-xs px-2 py-1 rounded-full font-semibold bg-gray-100 text-gray-600">
+              <div className="bg-white rounded-xl p-3 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <FileText className="w-5 h-5 text-blue-500" />
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-gray-100 text-gray-600">
                     {data.loans.length} total
                   </span>
                 </div>
                 <h3 className="font-bold text-sm">Loan Applications</h3>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
+                <p className="text-xl font-bold text-gray-900 mt-1">
                   {data.loans.filter(l => l.status === 'pending' || l.status === 'approved').length}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">Active applications</p>
+                <p className="text-xs text-gray-500 mt-0.5">Active applications</p>
               </div>
             </div>
 
@@ -229,7 +229,7 @@ export default function DashboardPage() {
             />
 
             {/* Loans List */}
-            <div className="mt-8">
+            <div className="mt-4">
               <h3 className="font-bold mb-3">Your Loans</h3>
               {data.loans.length === 0 ? (
                 <div className="bg-white rounded-xl p-8 shadow-sm text-center">

@@ -15,6 +15,7 @@
     "@aws-sdk/client-s3": "^3.1075.0",
     "@aws-sdk/s3-request-presigner": "^3.1075.0",
     "@neondatabase/serverless": "^1.1.0",
+    "@vercel/edge-config": "^1.4.3",
     "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.21.0",

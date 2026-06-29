@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { users } from '@/lib/schema';
+import { findUserByEmail, createUser } from '@/lib/edge-db';
 import { hash } from 'bcryptjs';
-import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 
 const signupSchema = z.object({
@@ -17,8 +15,8 @@ export async function POST(req: NextRequest) {
     const body = signupSchema.parse(await req.json());
 
     // Check if user already exists
-    const existing = await db.select().from(users).where(eq(users.email, body.email)).limit(1);
-    if (existing.length) {
+    const existing = await findUserByEmail(body.email);
+    if (existing) {
       return NextResponse.json({ error: 'An account with this email already exists' }, { status: 409 });
     }
 
@@ -26,16 +24,16 @@ export async function POST(req: NextRequest) {
     const passwordHash = await hash(body.password, 12);
 
     // Create the user with customer role
-    const inserted = await db.insert(users).values({
+    const user = await createUser({
       email: body.email,
       name: body.name,
       phone: body.phone,
       passwordHash,
       role: 'customer',
-    }).returning({ id: users.id, email: users.email, name: users.name, role: users.role });
+    });
 
     return NextResponse.json({
-      user: { id: inserted[0].id, email: inserted[0].email, name: inserted[0].name, role: inserted[0].role },
+      user: { id: user.id, email: user.email, name: user.name, role: user.role },
       message: 'Account created successfully',
     }, { status: 201 });
   } catch (e: unknown) {

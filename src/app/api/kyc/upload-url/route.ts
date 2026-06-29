@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPresignedUploadUrl } from '@/lib/r2';
-import { db } from '@/lib/db';
-import { kycUploads } from '@/lib/schema';
+import { createKycUpload } from '@/lib/edge-db';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -14,13 +13,20 @@ export async function POST(req: NextRequest) {
   try {
     const body = schema.parse(await req.json());
     const r2Key = `kyc/${body.userId}/${body.documentType}-${Date.now()}`;
-    const uploadUrl = await getPresignedUploadUrl(r2Key, body.contentType);
 
-    await db.insert(kycUploads).values({
+    // Try to get presigned URL (will fail if R2 not configured)
+    let uploadUrl = '';
+    try {
+      uploadUrl = await getPresignedUploadUrl(r2Key, body.contentType);
+    } catch {
+      // R2 not configured - return empty URL (uploads will be skipped)
+      uploadUrl = '';
+    }
+
+    await createKycUpload({
       userId: body.userId,
       documentType: body.documentType,
       r2Key,
-      status: 'pending',
     });
 
     return NextResponse.json({ uploadUrl, r2Key });

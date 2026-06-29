@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, Eye, EyeOff, CheckCircle } from 'lucide-react';
+import { Loader2, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react';
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -23,20 +23,24 @@ export default function SignUpPage() {
     setError('');
 
     // Client-side validation
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
+    if (name.trim().length < 2) {
+      setError('Name must be at least 2 characters');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError('Please enter a valid email address');
+      return;
+    }
+    if (phone.replace(/\D/g, '').length < 10) {
+      setError('Phone number must be at least 10 digits');
       return;
     }
     if (password.length < 6) {
       setError('Password must be at least 6 characters');
       return;
     }
-    if (name.length < 2) {
-      setError('Name must be at least 2 characters');
-      return;
-    }
-    if (phone.length < 10) {
-      setError('Phone number must be at least 10 characters');
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
       return;
     }
 
@@ -46,7 +50,7 @@ export default function SignUpPage() {
       const res = await fetch('/api/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, phone, password }),
+        body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), phone: phone.trim(), password }),
       });
       const data = await res.json();
 
@@ -59,7 +63,7 @@ export default function SignUpPage() {
       // 2. Auto sign-in after successful registration
       setSuccess(true);
       const signInRes = await signIn('credentials', {
-        email,
+        email: email.trim().toLowerCase(),
         password,
         redirect: false,
       });
@@ -73,7 +77,7 @@ export default function SignUpPage() {
       // 3. Redirect to dashboard
       router.push('/dashboard');
     } catch {
-      setError('Network error. Please try again.');
+      setError('Network error. Please check your connection and try again.');
     }
     setLoading(false);
   }
@@ -94,15 +98,20 @@ export default function SignUpPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <Link href="/" className="inline-block">
             <h1 className="text-2xl font-bold"><span className="text-mkopa-green">M-Kopa</span> Loans</h1>
           </Link>
           <p className="text-gray-500 mt-1">Create your account</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm p-8 space-y-5">
-          {error && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg">{error}</div>}
+        <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm p-6 space-y-4">
+          {error && (
+            <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium mb-1">Full Name</label>
@@ -111,6 +120,7 @@ export default function SignUpPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
+              minLength={2}
               className="w-full border rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-mkopa-green/30 focus:border-mkopa-green outline-none transition"
               placeholder="John Doe"
             />
@@ -136,7 +146,7 @@ export default function SignUpPage() {
               onChange={(e) => setPhone(e.target.value)}
               required
               className="w-full border rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-mkopa-green/30 focus:border-mkopa-green outline-none transition"
-              placeholder="+2547XXXXXXXX"
+              placeholder="+2547XXXXXXXX or 07XXXXXXXX"
             />
           </div>
 
@@ -148,6 +158,7 @@ export default function SignUpPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                minLength={6}
                 className="w-full border rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-mkopa-green/30 focus:border-mkopa-green outline-none transition pr-10"
                 placeholder="At least 6 characters"
               />
@@ -181,7 +192,7 @@ export default function SignUpPage() {
             {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating Account...</> : 'Create Account'}
           </button>
 
-          <p className="text-center text-sm text-gray-500 mt-4">
+          <p className="text-center text-sm text-gray-500 mt-3">
             Already have an account?{' '}
             <Link href="/login" className="text-mkopa-green font-semibold hover:underline">
               Sign In
@@ -189,7 +200,7 @@ export default function SignUpPage() {
           </p>
         </form>
 
-        <p className="text-center text-xs text-gray-400 mt-6">
+        <p className="text-center text-xs text-gray-400 mt-4">
           By creating an account, you agree to M-Kopa Loans&apos; Terms of Service and Privacy Policy.
         </p>
       </div>

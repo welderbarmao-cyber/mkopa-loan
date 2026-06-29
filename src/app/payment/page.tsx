@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, ArrowLeft, Smartphone, CheckCircle, AlertCircle } from 'lucide-react';
+import { Loader2, ArrowLeft, Smartphone, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
 import { formatKES } from '@/lib/utils';
 import { detectNetwork } from '@/lib/xdigitex';
 
@@ -20,7 +20,13 @@ function PaymentContent() {
   const [loading, setLoading] = useState(true);
   const [initiating, setInitiating] = useState(false);
   const [error, setError] = useState('');
-  const [paymentData, setPaymentData] = useState<{ reference: string; redirect_url?: string; checkout_url?: string; message?: string } | null>(null);
+  const [paymentData, setPaymentData] = useState<{
+    reference: string;
+    stkPushSent: boolean;
+    stkStatus: string;
+    correspondent: string;
+    message: string;
+  } | null>(null);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -48,7 +54,6 @@ function PaymentContent() {
         const found = data.loans.find((l: { id: number }) => l.id === parseInt(loanId || '0'));
         if (found) {
           setLoan(found);
-          // Pre-fill phone from user data
           if (data.user?.phone) setPhone(data.user.phone);
         } else {
           setError('Loan not found');
@@ -60,14 +65,23 @@ function PaymentContent() {
     setLoading(false);
   }
 
-  async function handlePay(gateway: 'safaricom' | 'airtel') {
+  async function handlePay() {
+    if (!phone || phone.length < 10) {
+      setError('Please enter a valid phone number');
+      return;
+    }
+    if (network === 'unknown') {
+      setError('Unable to detect network. Please check your phone number.');
+      return;
+    }
+
     setInitiating(true);
     setError('');
     try {
       const res = await fetch('/api/payment/initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ loanId: parseInt(loanId || '0'), gateway, phone }),
+        body: JSON.stringify({ loanId: parseInt(loanId || '0'), phone }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -76,12 +90,20 @@ function PaymentContent() {
       }
       setPaymentData({
         reference: data.reference,
-        redirect_url: data.redirect_url,
-        checkout_url: data.checkout_url,
-        message: data.message,
+        stkPushSent: data.stkPushSent,
+        stkStatus: data.stkStatus,
+        correspondent: data.correspondent || '',
+        message: data.message || 'STK push sent.',
       });
+
+      // If STK push was sent, redirect to status page after 3 seconds
+      if (data.stkPushSent || data.reference) {
+        setTimeout(() => {
+          router.push(`/payment/status?reference=${data.reference}&loanId=${loanId}`);
+        }, 3000);
+      }
     } catch {
-      setError('Network error');
+      setError('Network error. Please try again.');
     }
     setInitiating(false);
   }
@@ -134,8 +156,8 @@ function PaymentContent() {
         </div>
 
         {/* Payment Summary */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-          <h2 className="font-bold mb-4">Payment Summary</h2>
+        <div className="bg-white rounded-xl shadow-sm p-5 mb-4">
+          <h2 className="font-bold mb-3">Payment Summary</h2>
           <div className="space-y-2">
             <div className="flex justify-between">
               <span className="text-gray-500 text-sm">Loan Amount</span>
@@ -156,8 +178,8 @@ function PaymentContent() {
 
         {/* Payment Method */}
         {!paymentData ? (
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="font-bold mb-4">Choose Payment Method</h2>
+          <div className="bg-white rounded-xl shadow-sm p-5">
+            <h2 className="font-bold mb-3">STK Push Payment</h2>
 
             <div className="mb-4">
               <label className="block text-sm font-medium mb-1">Phone Number</label>
@@ -170,56 +192,72 @@ function PaymentContent() {
               />
               {phone && (
                 <p className="text-xs mt-1">
-                  Detected network: <span className="font-semibold capitalize text-mkopa-green">{network}</span>
-                  {network === 'telkom' && <span className="text-orange-600"> (Telkom not supported for STK)</span>}
+                  Detected: <span className="font-semibold capitalize text-mkopa-green">{network}</span>
+                  {network === 'telkom' && <span className="text-orange-600"> (Telkom not supported)</span>}
                   {network === 'unknown' && <span className="text-red-500"> (unrecognized)</span>}
                 </p>
               )}
             </div>
 
-            <div className="space-y-3">
-              <button
-                onClick={() => handlePay('safaricom')}
-                disabled={initiating || !phone || network === 'unknown'}
-                className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold disabled:opacity-40 flex items-center justify-center gap-2 hover:bg-green-700 transition"
-              >
-                <Smartphone className="w-5 h-5" />
-                {initiating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Pay via M-Pesa (Safaricom)'}
-              </button>
+            <button
+              onClick={handlePay}
+              disabled={initiating || !phone || network === 'unknown' || network === 'telkom'}
+              className="w-full gradient-mkopa text-white py-3 rounded-lg font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
+            >
+              <Smartphone className="w-5 h-5" />
+              {initiating ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Send STK Push'}
+            </button>
 
-              <button
-                onClick={() => handlePay('airtel')}
-                disabled={initiating || !phone || network === 'unknown'}
-                className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold disabled:opacity-40 flex items-center justify-center gap-2 hover:bg-red-700 transition"
-              >
-                <Smartphone className="w-5 h-5" />
-                {initiating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Pay via Airtel Money'}
-              </button>
+            {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
+
+            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-xs text-blue-700 dark:text-blue-400">
+              <p className="font-semibold mb-1">How it works:</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>Enter your M-Pesa/Airtel phone number</li>
+                <li>Click &quot;Send STK Push&quot;</li>
+                <li>Check your phone for the payment prompt</li>
+                <li>Enter your M-Pesa/Airtel PIN to complete</li>
+              </ol>
             </div>
-
-            {error && <p className="text-red-500 text-sm mt-4">{error}</p>}
-
-            <p className="text-xs text-gray-400 text-center mt-4">
-              You&apos;ll receive an STK push prompt on your phone. Enter your M-Pesa/Airtel PIN to complete payment.
-            </p>
           </div>
         ) : (
           <div className="bg-white rounded-xl shadow-sm p-6 text-center">
-            <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Smartphone className="w-8 h-8 text-yellow-600 animate-pulse" />
-            </div>
-            <h2 className="font-bold text-lg mb-2">Check Your Phone</h2>
-            <p className="text-gray-500 text-sm mb-4">{paymentData.message || 'STK push sent. Enter your PIN to complete payment.'}</p>
-            <div className="bg-gray-50 rounded-lg p-3 mb-4">
-              <p className="text-xs text-gray-500">Reference</p>
-              <p className="font-mono text-sm font-semibold">{paymentData.reference}</p>
-            </div>
-            <Link
-              href={`/payment/status?reference=${paymentData.reference}&loanId=${loanId}`}
-              className="block w-full gradient-mkopa text-white py-3 rounded-lg font-semibold"
-            >
-              Check Payment Status
-            </Link>
+            {paymentData.stkStatus === 'REJECTED' ? (
+              <>
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <XCircle className="w-8 h-8 text-red-600" />
+                </div>
+                <h2 className="font-bold text-lg mb-2">STK Push Failed</h2>
+                <p className="text-gray-500 text-sm mb-4">{paymentData.message}</p>
+                <button
+                  onClick={() => setPaymentData(null)}
+                  className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold"
+                >
+                  Try Again
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="w-16 h-16 bg-mkopa-green/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Smartphone className="w-8 h-8 text-mkopa-green animate-pulse" />
+                </div>
+                <h2 className="font-bold text-lg mb-2">Check Your Phone!</h2>
+                <p className="text-gray-500 text-sm mb-2">{paymentData.message}</p>
+                {paymentData.correspondent && (
+                  <p className="text-xs text-gray-400 mb-4">
+                    Network: <span className="font-semibold">{paymentData.correspondent}</span>
+                  </p>
+                )}
+                <div className="bg-gray-50 dark:bg-ink-800 rounded-lg p-3 mb-4">
+                  <p className="text-xs text-gray-500">Reference</p>
+                  <p className="font-mono text-sm font-semibold">{paymentData.reference}</p>
+                </div>
+                <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Redirecting to payment status...</span>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

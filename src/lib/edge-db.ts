@@ -236,6 +236,9 @@ export async function findLoanById(id: number): Promise<Loan | null> {
 
 // ---------- KYC ----------
 
+// Store file data in separate keys to avoid Edge Config 2MB limit per key
+const KYC_FILE_PREFIX = 'kyc_file_';
+
 export async function createKycUpload(data: {
   userId: number;
   documentType: 'national_id' | 'passport';
@@ -246,6 +249,17 @@ export async function createKycUpload(data: {
 }): Promise<KycUpload> {
   const uploads = (await readEdgeConfig<KycUpload[]>(KYC_KEY)) || [];
   const id = await getNextId('kyc');
+
+  // Store file data in a SEPARATE key (not in the array) to avoid size limits
+  if (data.fileData) {
+    await writeEdgeConfig(`${KYC_FILE_PREFIX}${id}`, {
+      fileData: data.fileData,
+      fileName: data.fileName,
+      contentType: data.contentType,
+    });
+  }
+
+  // Store only metadata in the array (keeps it small)
   const newUpload: KycUpload = {
     id,
     userId: data.userId,
@@ -253,13 +267,19 @@ export async function createKycUpload(data: {
     r2Key: data.r2Key,
     status: 'pending',
     uploadedAt: new Date().toISOString(),
-    fileData: data.fileData,
+    // Don't store fileData in the array - it's in a separate key
     fileName: data.fileName,
     contentType: data.contentType,
   };
   uploads.push(newUpload);
   await writeEdgeConfig(KYC_KEY, uploads);
   return newUpload;
+}
+
+// Get file data for a specific KYC document
+export async function getKycFileData(kycId: number): Promise<{ fileData: string; fileName?: string; contentType?: string } | null> {
+  const data = await readEdgeConfig<{ fileData: string; fileName?: string; contentType?: string }>(`${KYC_FILE_PREFIX}${kycId}`);
+  return data || null;
 }
 
 export async function getKycByUserId(userId: number): Promise<KycUpload[]> {

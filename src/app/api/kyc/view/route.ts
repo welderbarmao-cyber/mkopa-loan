@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getAllKyc, KycUpload } from '@/lib/edge-db';
+import { getAllKyc, getKycFileData, KycUpload } from '@/lib/edge-db';
 import { isR2Configured, getPresignedViewUrl } from '@/lib/r2';
 
 export async function GET(req: NextRequest) {
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'docId required' }, { status: 400 });
     }
 
-    // Get the document
+    // Get the document metadata
     const allKyc = await getAllKyc();
     const doc = allKyc.find((k: KycUpload) => k.id === docId);
 
@@ -32,7 +32,19 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // If document has base64 data in Edge Config, return it
+    // Try to get file data from separate Edge Config key first
+    const fileData = await getKycFileData(docId);
+    if (fileData?.fileData) {
+      return NextResponse.json({
+        documentType: doc.documentType,
+        contentType: fileData.contentType || doc.contentType || 'image/jpeg',
+        fileName: fileData.fileName || doc.fileName,
+        fileData: fileData.fileData,
+        storage: 'edge-config',
+      });
+    }
+
+    // Check if the doc has fileData in the array (old format)
     if (doc.fileData) {
       return NextResponse.json({
         documentType: doc.documentType,
@@ -58,8 +70,9 @@ export async function GET(req: NextRequest) {
 
     // No file data available
     return NextResponse.json({
-      error: 'Document file not available. R2 storage not configured.',
+      error: 'Document file not available. The file data may not have been stored.',
       r2Key: doc.r2Key,
+      docId,
     }, { status: 404 });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error';

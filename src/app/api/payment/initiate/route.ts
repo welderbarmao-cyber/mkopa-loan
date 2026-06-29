@@ -7,7 +7,8 @@ import { z } from 'zod';
 
 const initiateSchema = z.object({
   loanId: z.number(),
-  gateway: z.enum(['safaricom', 'airtel', 'mobile']),
+  // We use 'mobile' gateway for actual STK push (auto-detects Safaricom/Airtel)
+  // safaricom/airtel gateways use Pesapal hosted checkout (redirect), not STK push
   phone: z.string().min(10),
 });
 
@@ -37,11 +38,13 @@ export async function POST(req: NextRequest) {
 
     const normalizedPhone = normalizePhone(body.phone);
 
-    // Initiate payment via XDigitex
+    // ALWAYS use 'mobile' gateway for actual STK push
+    // The mobile gateway uses PawaPay which sends real STK push to the phone
+    // It auto-detects Safaricom (M-Pesa) or Airtel Money from the phone number
     const payment = await initiatePayment({
       amount: loan.activationFee,
       currency: 'KES',
-      gateway: body.gateway,
+      gateway: 'mobile',
       phone: normalizedPhone,
       email: user.email,
       first_name: user.name.split(' ')[0],
@@ -57,14 +60,23 @@ export async function POST(req: NextRequest) {
       activationFeeReference: payment.reference,
     });
 
+    // Check if STK push was sent successfully
+    const stkSent = payment.pawa_status === 'ACCEPTED' || payment.pawa_status === 'PENDING';
+    const stkRejected = payment.pawa_status === 'REJECTED';
+
     return NextResponse.json({
       success: true,
       reference: payment.reference,
       gateway: payment.gateway,
       amount: loan.activationFee,
-      redirect_url: payment.redirect_url,
+      // For mobile gateway: STK push is sent directly to phone
+      stkPushSent: stkSent,
+      stkStatus: payment.pawa_status,
+      correspondent: payment.correspondent,
       checkout_url: payment.checkout_url,
-      message: payment.message || 'STK push sent to your phone. Enter your PIN to complete payment.',
+      message: stkRejected
+        ? 'STK push was rejected. Please check your phone number and try again.'
+        : 'STK push sent to your phone. Enter your M-Pesa/Airtel PIN to complete payment.',
     });
   } catch (e: unknown) {
     if (e instanceof z.ZodError) {

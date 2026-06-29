@@ -1,5 +1,18 @@
+// =====================================================
+// M-Kopa Loan Utilities
+// =====================================================
+
 export function calculateLoanFee(amount: number): number {
   return Math.ceil(amount * (179 / 5000)); // 3.58%
+}
+
+// Activation fee: 5000 -> KES 199
+// Formula: amount / 5000 * 199, rounded up, min 199
+export function calculateActivationFee(amount: number): number {
+  if (amount <= 0) return 0;
+  // KES 199 per 5000 borrowed
+  const fee = Math.ceil((amount / 5000) * 199);
+  return Math.max(fee, 199);
 }
 
 export function formatKES(n: number): string {

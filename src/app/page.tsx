@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, Shield, Smartphone, Clock, TrendingUp, ChevronRight } from 'lucide-react';
+import { ArrowRight, Shield, Smartphone, Clock, TrendingUp, ChevronRight, Wallet, FileText, Users } from 'lucide-react';
 
 const PRODUCTS = [
   { name: 'Personal Loan', rate: 12.5, range: '5,000 – 500,000', icon: '👤' },
@@ -10,10 +10,17 @@ const PRODUCTS = [
 ];
 
 const FEATURES = [
-  { icon: Smartphone, title: 'Mobile Money', desc: 'Disbursed via M-Pesa, Airtel Money & more' },
+  { icon: Smartphone, title: 'Mobile Money', desc: 'Pay via M-Pesa & Airtel STK push' },
   { icon: Clock, title: 'Fast Approval', desc: 'Get a decision within 24 hours' },
-  { icon: Shield, title: 'Secure', desc: '256-bit encryption & data protection' },
+  { icon: Shield, title: 'Secure KYC', desc: '256-bit encryption & data protection' },
   { icon: TrendingUp, title: 'Low Rates', desc: 'Starting from 10% p.a.' },
+];
+
+const STEPS = [
+  { num: '1', title: 'Sign Up', desc: 'Create your free account with email and phone number', icon: Users },
+  { num: '2', title: 'Complete KYC', desc: 'Upload your National ID or Passport for verification', icon: Shield },
+  { num: '3', title: 'Get Loan Limit', desc: 'Admin reviews your KYC and assigns a loan limit', icon: Wallet },
+  { num: '4', title: 'Apply & Pay Fee', desc: 'Apply for a loan and pay activation fee via STK push', icon: FileText },
 ];
 
 export default function HomePage() {
@@ -66,6 +73,34 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* How It Works */}
+      <section className="py-20">
+        <div className="max-w-7xl mx-auto px-4">
+          <h2 className="text-3xl font-bold text-center mb-2">How It Works</h2>
+          <p className="text-gray-500 text-center mb-12">Your journey to getting a loan in 4 simple steps</p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {STEPS.map((step, i) => {
+              const Icon = step.icon;
+              return (
+                <div key={step.num} className="relative">
+                  {i < STEPS.length - 1 && (
+                    <div className="hidden sm:block absolute top-8 left-[60%] w-full h-0.5 bg-gray-200" />
+                  )}
+                  <div className="relative bg-white rounded-xl p-6 shadow-sm border-t-4 border-mkopa-green">
+                    <div className="w-12 h-12 gradient-mkopa rounded-full flex items-center justify-center text-white font-bold text-xl mb-4">
+                      {step.num}
+                    </div>
+                    <Icon className="w-6 h-6 text-mkopa-orange mb-2" />
+                    <h3 className="font-bold text-lg mb-2">{step.title}</h3>
+                    <p className="text-gray-500 text-sm">{step.desc}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
       {/* Products */}
       <section className="py-20 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4">
@@ -81,28 +116,6 @@ export default function HomePage() {
                 <Link href="/signup" className="mt-4 inline-flex items-center text-sm text-mkopa-green font-semibold hover:underline">
                   Apply <ChevronRight className="w-4 h-4" />
                 </Link>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* How It Works */}
-      <section className="py-20">
-        <div className="max-w-7xl mx-auto px-4">
-          <h2 className="text-3xl font-bold text-center mb-12">How It Works</h2>
-          <div className="grid sm:grid-cols-3 gap-8">
-            {[
-              { step: '1', title: 'Create Account', desc: 'Sign up with your email, phone number and set a password. It takes less than a minute.' },
-              { step: '2', title: 'Apply & Upload KYC', desc: 'Choose your loan product, fill in details, and upload your identification documents securely.' },
-              { step: '3', title: 'Get Funded', desc: 'Receive approval within 24 hours. Funds are disbursed directly to your M-Pesa or mobile money account.' },
-            ].map((item) => (
-              <div key={item.step} className="text-center">
-                <div className="w-14 h-14 gradient-mkopa rounded-full flex items-center justify-center text-white font-bold text-xl mx-auto mb-4">
-                  {item.step}
-                </div>
-                <h3 className="font-bold text-lg mb-2">{item.title}</h3>
-                <p className="text-gray-500 text-sm">{item.desc}</p>
               </div>
             ))}
           </div>

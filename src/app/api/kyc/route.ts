@@ -1,0 +1,91 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { findUserById, createKycUpload, updateUser, getKycByUserId, KycUpload } from '@/lib/edge-db';
+import { z } from 'zod';
+
+const submitKycSchema = z.object({
+  documents: z.array(z.object({
+    documentType: z.enum(['national_id', 'passport']),
+    r2Key: z.string(),
+  })).min(1, 'At least one document is required'),
+});
+
+// GET: fetch current user's KYC status
+export async function GET() {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const userId = parseInt((session.user as { id: string }).id);
+    const user = await findUserById(userId);
+    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+    const kycDocs = await getKycByUserId(userId);
+    return NextResponse.json({
+      kycStatus: user.kycStatus,
+      kycSubmittedAt: user.kycSubmittedAt,
+      kycReviewedAt: user.kycReviewedAt,
+      kycRejectionReason: user.kycRejectionReason,
+      documents: kycDocs.map((d: KycUpload) => ({
+        id: d.id,
+        documentType: d.documentType,
+        status: d.status,
+        uploadedAt: d.uploadedAt,
+        rejectionReason: d.rejectionReason,
+      })),
+    });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+// POST: submit KYC documents for review
+export async function POST(req: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const userId = parseInt((session.user as { id: string }).id);
+    const user = await findUserById(userId);
+    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+    if (user.kycStatus === 'approved') {
+      return NextResponse.json({ error: 'KYC already approved' }, { status: 400 });
+    }
+
+    const body = submitKycSchema.parse(await req.json());
+
+    // Create KYC upload records
+    for (const doc of body.documents) {
+      await createKycUpload({
+        userId,
+        documentType: doc.documentType,
+        r2Key: doc.r2Key,
+      });
+    }
+
+    // Update user KYC status to submitted
+    await updateUser(user.email, {
+      kycStatus: 'submitted',
+      kycSubmittedAt: new Date().toISOString(),
+      kycReviewedAt: undefined,
+      kycRejectionReason: undefined,
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'KYC documents submitted for review',
+      kycStatus: 'submitted',
+    }, { status: 201 });
+  } catch (e: unknown) {
+    if (e instanceof z.ZodError) {
+      return NextResponse.json({ error: e.issues[0]?.message || 'Validation error' }, { status: 400 });
+    }
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}

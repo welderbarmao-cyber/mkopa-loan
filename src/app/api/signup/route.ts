@@ -14,16 +14,13 @@ export async function POST(req: NextRequest) {
   try {
     const body = signupSchema.parse(await req.json());
 
-    // Check if user already exists
     const existing = await findUserByEmail(body.email);
     if (existing) {
       return NextResponse.json({ error: 'An account with this email already exists' }, { status: 409 });
     }
 
-    // Hash the password
     const passwordHash = await hash(body.password, 12);
 
-    // Create the user with customer role
     const user = await createUser({
       email: body.email,
       name: body.name,
@@ -38,8 +35,7 @@ export async function POST(req: NextRequest) {
     }, { status: 201 });
   } catch (e: unknown) {
     if (e instanceof z.ZodError) {
-      const issues = e.issues;
-      return NextResponse.json({ error: issues[0]?.message || 'Validation error' }, { status: 400 });
+      return NextResponse.json({ error: e.issues[0]?.message || 'Validation error' }, { status: 400 });
     }
     const msg = e instanceof Error ? e.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server';
-import { initializeDatabase, findUserByEmail, createUser, updateUserPassword } from '@/lib/edge-db';
+import { initializeDatabase, findUserByEmail, createUser, updateUser } from '@/lib/edge-db';
 import { hash } from 'bcryptjs';
 
 export async function GET() {
   try {
-    // Initialize the database (creates empty arrays if needed)
     await initializeDatabase();
 
-    // Check if admin exists, create or reset password
     const admin = await findUserByEmail('admin@mkopa.com');
     if (!admin) {
       const adminHash = await hash('Admin@123', 12);
@@ -21,10 +19,9 @@ export async function GET() {
     } else {
       // Reset admin password to known value
       const adminHash = await hash('Admin@123', 12);
-      await updateUserPassword('admin@mkopa.com', adminHash);
+      await updateUser('admin@mkopa.com', { passwordHash: adminHash });
     }
 
-    // Verify admin
     const verifiedAdmin = await findUserByEmail('admin@mkopa.com');
 
     return NextResponse.json({

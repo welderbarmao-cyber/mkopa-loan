@@ -47,8 +47,8 @@ export async function POST(req: NextRequest) {
       first_name: user.name.split(' ')[0],
       last_name: user.name.split(' ').slice(1).join(' ') || 'Customer',
       description: `M-Kopa Loan Activation Fee - Loan #${loan.id}`,
-      callback_url: `https://app.kesug.qzz.io/payment/callback?loanId=${loan.id}`,
-      webhook_url: `https://app.kesug.qzz.io/api/payment/webhook`,
+      callback_url: `https://m-kopa.kesug.qzz.io/payment/callback?loanId=${loan.id}`,
+      webhook_url: `https://m-kopa.kesug.qzz.io/api/payment/webhook`,
     });
 
     // Update loan with payment reference

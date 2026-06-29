@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import AuthProvider from "@/components/auth-provider";
+import SplashScreen from "@/components/splash-screen";
 
 export const metadata: Metadata = {
   title: "M-Kopa Loans — Affordable Digital Lending",
@@ -11,7 +12,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-screen bg-white text-gray-900 antialiased">
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <SplashScreen />
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

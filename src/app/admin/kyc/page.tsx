@@ -236,13 +236,21 @@ export default function AdminKycPage() {
                   <div className="space-y-2">
                     {record.documents.map(doc => (
                       <div key={doc.id} className="flex items-center gap-3 p-3 rounded-lg border border-ink-200 dark:border-ink-800">
-                        <div className="w-10 h-10 rounded-lg bg-ink-100 dark:bg-ink-800 flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-lg bg-ink-100 dark:bg-ink-800 flex items-center justify-center flex-shrink-0">
                           <FileText className="w-5 h-5 text-ink-500" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold capitalize">{doc.documentType.replace('_', ' ')}</p>
                           <p className="text-xs text-ink-500 font-mono">{doc.r2Key.split('/').pop()}</p>
                         </div>
+                        <a
+                          href={`/api/kyc/view?docId=${doc.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-mkopa-green font-semibold hover:underline px-3 py-1 rounded-lg border border-mkopa-green/30 hover:bg-mkopa-green/5"
+                        >
+                          View Document
+                        </a>
                         <Badge variant={
                           doc.status === 'approved' ? 'success' :
                           doc.status === 'rejected' ? 'danger' : 'warning'

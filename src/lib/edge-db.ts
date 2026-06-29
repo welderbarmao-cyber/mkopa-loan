@@ -48,6 +48,10 @@ export interface KycUpload {
   rejectionReason?: string;
   uploadedAt: string;
   reviewedAt?: string;
+  // Base64 document data (stored when R2 is not available)
+  fileData?: string;
+  fileName?: string;
+  contentType?: string;
 }
 
 const USERS_KEY = 'users';
@@ -236,6 +240,9 @@ export async function createKycUpload(data: {
   userId: number;
   documentType: 'national_id' | 'passport';
   r2Key: string;
+  fileData?: string;
+  fileName?: string;
+  contentType?: string;
 }): Promise<KycUpload> {
   const uploads = (await readEdgeConfig<KycUpload[]>(KYC_KEY)) || [];
   const id = await getNextId('kyc');
@@ -246,6 +253,9 @@ export async function createKycUpload(data: {
     r2Key: data.r2Key,
     status: 'pending',
     uploadedAt: new Date().toISOString(),
+    fileData: data.fileData,
+    fileName: data.fileName,
+    contentType: data.contentType,
   };
   uploads.push(newUpload);
   await writeEdgeConfig(KYC_KEY, uploads);

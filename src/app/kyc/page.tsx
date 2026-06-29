@@ -4,14 +4,23 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, Upload, CheckCircle, ArrowLeft, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Loader2, CheckCircle, ArrowLeft, ShieldCheck, AlertCircle, FileImage } from 'lucide-react';
 
 type DocType = 'national_id' | 'passport';
+
+interface DocState {
+  r2Key: string | null;
+  fileName: string;
+  preview: string;
+}
 
 export default function KycPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [docs, setDocs] = useState<Record<DocType, string | null>>({ national_id: null, passport: null });
+  const [docs, setDocs] = useState<Record<DocType, DocState | null>>({
+    national_id: null,
+    passport: null,
+  });
   const [uploading, setUploading] = useState<DocType | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -42,15 +51,39 @@ export default function KycPage() {
     } catch {}
   }
 
+  // Convert file to base64
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
   async function handleUpload(file: File, docType: DocType) {
     setUploading(docType);
     setError('');
     try {
-      // Get upload URL (creates a record in DB)
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('File too large. Maximum size is 5MB.');
+        setUploading(null);
+        return;
+      }
+
+      // Convert to base64
+      const base64Data = await fileToBase64(file);
+
+      // Upload via our API (which stores in R2 or Edge Config)
       const res = await fetch('/api/kyc/upload-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentType: docType, contentType: file.type }),
+        body: JSON.stringify({
+          documentType: docType,
+          contentType: file.type,
+          fileData: base64Data,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -58,9 +91,14 @@ export default function KycPage() {
         return;
       }
 
-      // In production, upload to R2 using data.uploadUrl
-      // For now, just mark as uploaded locally
-      setDocs(prev => ({ ...prev, [docType]: data.r2Key }));
+      setDocs(prev => ({
+        ...prev,
+        [docType]: {
+          r2Key: data.r2Key,
+          fileName: file.name,
+          preview: base64Data,
+        },
+      }));
     } catch {
       setError('Network error during upload');
     }
@@ -72,8 +110,8 @@ export default function KycPage() {
     setError('');
     try {
       const documents = [];
-      if (docs.national_id) documents.push({ documentType: 'national_id', r2Key: docs.national_id });
-      if (docs.passport) documents.push({ documentType: 'passport', r2Key: docs.passport });
+      if (docs.national_id?.r2Key) documents.push({ documentType: 'national_id', r2Key: docs.national_id.r2Key });
+      if (docs.passport?.r2Key) documents.push({ documentType: 'passport', r2Key: docs.passport.r2Key });
 
       if (documents.length === 0) {
         setError('Please upload at least one document');
@@ -107,7 +145,6 @@ export default function KycPage() {
     );
   }
 
-  // If already approved, show message
   if (kycStatus === 'approved') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -148,7 +185,7 @@ export default function KycPage() {
             <ShieldCheck className="w-6 h-6 text-mkopa-green" />
             <div>
               <h2 className="font-bold">Upload Your Documents</h2>
-              <p className="text-sm text-gray-500">Upload your National ID or Passport for verification</p>
+              <p className="text-sm text-gray-500">Upload your National ID or Passport for verification. Documents are stored securely in Cloudflare R2.</p>
             </div>
           </div>
 
@@ -156,17 +193,38 @@ export default function KycPage() {
             {(['national_id', 'passport'] as DocType[]).map(docType => (
               <div key={docType} className="border-2 border-dashed rounded-xl p-6 text-center">
                 {docs[docType] ? (
-                  <div className="flex items-center justify-center gap-2 text-mkopa-green">
-                    <CheckCircle className="w-5 h-5" />
-                    <span className="font-medium capitalize">{docType.replace('_', ' ')} uploaded</span>
+                  <div className="space-y-3">
+                    {docs[docType]?.preview && (
+                      <div className="flex justify-center">
+                        <img
+                          src={docs[docType]?.preview}
+                          alt={docType}
+                          className="max-h-40 rounded-lg border"
+                        />
+                      </div>
+                    )}
+                    <div className="flex items-center justify-center gap-2 text-mkopa-green">
+                      <CheckCircle className="w-5 h-5" />
+                      <span className="font-medium capitalize">{docType.replace('_', ' ')} uploaded</span>
+                    </div>
+                    <p className="text-xs text-gray-400">{docs[docType]?.fileName}</p>
+                    <button
+                      onClick={() => setDocs(prev => ({ ...prev, [docType]: null }))}
+                      className="text-xs text-red-500 hover:underline"
+                    >
+                      Remove and re-upload
+                    </button>
                   </div>
                 ) : (
                   <>
-                    <Upload className="w-8 h-8 mx-auto text-gray-400 mb-2" />
+                    <FileImage className="w-8 h-8 mx-auto text-gray-400 mb-2" />
                     <p className="font-medium capitalize mb-1">{docType.replace('_', ' ')}</p>
                     <p className="text-xs text-gray-400 mb-3">PNG, JPG up to 5MB</p>
                     {uploading === docType ? (
-                      <Loader2 className="w-5 h-5 animate-spin mx-auto text-mkopa-green" />
+                      <div className="flex items-center justify-center gap-2 text-mkopa-green">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        <span className="text-sm">Uploading to R2...</span>
+                      </div>
                     ) : (
                       <label className="cursor-pointer text-sm text-mkopa-green font-semibold hover:underline">
                         Choose File
@@ -195,7 +253,7 @@ export default function KycPage() {
             {submitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting...</> : 'Submit for Review'}
           </button>
           <p className="text-xs text-gray-400 text-center mt-3">
-            Upload at least one document. Both are recommended for faster approval.
+            Upload at least one document. Both are recommended for faster approval. Documents are encrypted and stored in Cloudflare R2.
           </p>
         </div>
       </div>

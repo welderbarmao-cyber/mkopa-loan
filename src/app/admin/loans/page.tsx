@@ -1,8 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Loader2, FileText, CheckCircle, XCircle, Clock } from 'lucide-react';
-import { formatKES } from '@/lib/utils';
+import { Card, Button, Badge, Input, Avatar, EmptyState, Skeleton } from '@/components/ui';
+import { cn, formatCurrency, formatNumber, formatDate } from '@/lib/cn';
+import {
+  FileText, Search, CheckCircle, XCircle, Clock, Download,
+  DollarSign, AlertCircle, CreditCard
+} from 'lucide-react';
 
 interface LoanRecord {
   id: number;
@@ -22,10 +26,19 @@ interface LoanRecord {
   createdAt: string;
 }
 
+const statusConfig: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'default' }> = {
+  pending: { label: 'Pending', variant: 'warning' },
+  approved: { label: 'Approved', variant: 'success' },
+  rejected: { label: 'Rejected', variant: 'danger' },
+  disbursed: { label: 'Disbursed', variant: 'info' },
+};
+
 export default function AdminLoansPage() {
   const [loans, setLoans] = useState<LoanRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'disbursed'>('all');
+  const [search, setSearch] = useState('');
+  const [actionLoading, setActionLoading] = useState<number | null>(null);
 
   useEffect(() => { fetchLoans(); }, []);
 
@@ -39,6 +52,7 @@ export default function AdminLoansPage() {
   }
 
   async function updateStatus(loanId: number, status: string) {
+    setActionLoading(loanId);
     try {
       await fetch('/api/admin/loans', {
         method: 'PATCH',
@@ -47,105 +61,195 @@ export default function AdminLoansPage() {
       });
       await fetchLoans();
     } catch {}
+    setActionLoading(null);
   }
 
-  const filtered = filter === 'all' ? loans : loans.filter(l => l.status === filter);
+  const filtered = loans.filter(l => {
+    if (filter !== 'all' && l.status !== filter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return l.userName.toLowerCase().includes(q) ||
+             l.userEmail.toLowerCase().includes(q) ||
+             l.userPhone.includes(search) ||
+             String(l.id).includes(search);
+    }
+    return true;
+  });
 
   if (loading) {
-    return <div className="flex items-center justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-mkopa-green" /></div>;
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid sm:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+        </div>
+        <Skeleton className="h-96 rounded-xl" />
+      </div>
+    );
   }
 
-  return (
-    <div>
-      <h1 className="text-2xl font-bold mb-6">Loan Applications</h1>
+  const stats = {
+    total: loans.length,
+    pending: loans.filter(l => l.status === 'pending').length,
+    approved: loans.filter(l => l.status === 'approved' || l.status === 'disbursed').length,
+    disbursed: loans.filter(l => l.activationFeeStatus === 'paid').reduce((sum, l) => sum + l.amount, 0),
+  };
 
-      {/* Filter */}
-      <div className="flex gap-2 mb-6 overflow-x-auto">
-        {(['all', 'pending', 'approved', 'rejected', 'disbursed'] as const).map(f => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold capitalize transition ${
-              filter === f ? 'gradient-mkopa text-white' : 'bg-white text-gray-600 border'
-            }`}
-          >
-            {f} ({f === 'all' ? loans.length : loans.filter(l => l.status === f).length})
-          </button>
-        ))}
+  return (
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Loan Management</h1>
+          <p className="text-sm text-ink-500 mt-1">Review, approve, and manage all loan applications</p>
+        </div>
+        <Button variant="outline" size="md">
+          <Download className="w-4 h-4" /> Export
+        </Button>
       </div>
 
-      {filtered.length === 0 ? (
-        <div className="bg-white rounded-xl p-12 text-center">
-          <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500">No loans to display</p>
+      {/* Stats */}
+      <div className="grid sm:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Loans', value: formatNumber(stats.total), icon: FileText, color: 'from-blue-500 to-blue-600' },
+          { label: 'Pending Review', value: formatNumber(stats.pending), icon: Clock, color: 'from-amber-500 to-orange-500' },
+          { label: 'Approved', value: formatNumber(stats.approved), icon: CheckCircle, color: 'from-emerald-500 to-teal-500' },
+          { label: 'Total Disbursed', value: formatCurrency(stats.disbursed), icon: DollarSign, color: 'from-purple-500 to-pink-500' },
+        ].map(stat => {
+          const Icon = stat.icon;
+          return (
+            <Card key={stat.label} className="p-5">
+              <div className={cn('w-10 h-10 rounded-lg bg-gradient-to-br text-white flex items-center justify-center mb-3', stat.color)}>
+                <Icon className="w-5 h-5" />
+              </div>
+              <p className="text-2xl font-bold">{stat.value}</p>
+              <p className="text-sm text-ink-500 mt-1">{stat.label}</p>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Filters */}
+      <Card className="p-4">
+        <div className="flex flex-col lg:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" />
+            <Input
+              type="text"
+              placeholder="Search by loan ID, customer name, email, or phone..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <div className="flex items-center gap-2 overflow-x-auto">
+            {(['all', 'pending', 'approved', 'disbursed', 'rejected'] as const).map(f => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={cn(
+                  'px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all capitalize',
+                  filter === f
+                    ? 'gradient-mkopa text-white shadow-premium-md'
+                    : 'bg-ink-100 text-ink-600 hover:bg-ink-200 dark:bg-ink-800 dark:text-ink-400 dark:hover:bg-ink-700'
+                )}
+              >
+                {f} ({f === 'all' ? loans.length : loans.filter(l => l.status === f).length})
+              </button>
+            ))}
+          </div>
         </div>
+      </Card>
+
+      {/* Loans */}
+      {filtered.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={FileText}
+            title="No loans found"
+            description="When customers apply for loans, they will appear here for review."
+          />
+        </Card>
       ) : (
         <div className="space-y-3">
-          {filtered.map(loan => (
-            <div key={loan.id} className="bg-white rounded-xl p-5 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="font-bold capitalize">{loan.productType.replace('_', ' ')} Loan</h3>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold capitalize ${
-                      loan.status === 'approved' ? 'bg-green-100 text-green-700' :
-                      loan.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                      loan.status === 'disbursed' ? 'bg-blue-100 text-blue-700' :
-                      'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {loan.status}
-                    </span>
-                  </div>
-                  <div className="grid sm:grid-cols-2 gap-2 text-sm">
-                    <div><span className="text-gray-500">Customer:</span> <strong>{loan.userName}</strong></div>
-                    <div><span className="text-gray-500">Contact:</span> {loan.userPhone}</div>
-                    <div><span className="text-gray-500">Amount:</span> <strong>{formatKES(loan.amount)}</strong></div>
-                    <div><span className="text-gray-500">Term:</span> {loan.termMonths} months</div>
-                    <div><span className="text-gray-500">Activation Fee:</span> {formatKES(loan.activationFee)}</div>
-                    <div><span className="text-gray-500">Fee Status:</span>
-                      <span className={`ml-1 text-xs font-semibold ${
-                        loan.activationFeeStatus === 'paid' ? 'text-green-600' :
-                        loan.activationFeeStatus === 'pending' ? 'text-yellow-600' :
-                        loan.activationFeeStatus === 'failed' ? 'text-red-600' :
-                        'text-gray-500'
-                      }`}>
-                        {loan.activationFeeStatus}
-                      </span>
+          {filtered.map(loan => {
+            const status = statusConfig[loan.status] || { label: loan.status, variant: 'default' as const };
+            return (
+              <Card key={loan.id} className="p-5 hover:shadow-premium-lg transition-all">
+                <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                  {/* Left: Customer Info */}
+                  <div className="flex items-start gap-3 flex-1">
+                    <Avatar name={loan.userName} className="w-12 h-12" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-semibold">{loan.userName}</h3>
+                        <Badge variant={status.variant}>{status.label}</Badge>
+                        <span className="text-xs text-ink-400">#{loan.id}</span>
+                      </div>
+                      <p className="text-sm text-ink-500">{loan.userEmail} · {loan.userPhone}</p>
+                      <div className="flex flex-wrap items-center gap-4 mt-2 text-sm">
+                        <span><span className="text-ink-500">Product:</span> <strong className="capitalize">{loan.productType.replace('_', ' ')}</strong></span>
+                        <span><span className="text-ink-500">Amount:</span> <strong>{formatCurrency(loan.amount)}</strong></span>
+                        <span><span className="text-ink-500">Term:</span> {loan.termMonths} months</span>
+                        <span><span className="text-ink-500">Applied:</span> {formatDate(loan.createdAt)}</span>
+                      </div>
+                      {loan.purpose && (
+                        <p className="text-xs text-ink-500 mt-2 italic">&quot;{loan.purpose}&quot;</p>
+                      )}
                     </div>
-                    {loan.purpose && <div className="sm:col-span-2"><span className="text-gray-500">Purpose:</span> {loan.purpose}</div>}
                   </div>
-                  <p className="text-xs text-gray-400 mt-2">Applied: {new Date(loan.createdAt).toLocaleString()}</p>
-                  {loan.activationFeeReference && (
-                    <p className="text-xs text-gray-400 mt-1">Payment Ref: <span className="font-mono">{loan.activationFeeReference}</span></p>
-                  )}
-                </div>
 
-                {/* Admin Actions */}
-                {loan.status === 'pending' && loan.activationFeeStatus === 'paid' && (
-                  <div className="flex flex-col gap-2">
-                    <button
-                      onClick={() => updateStatus(loan.id, 'disbursed')}
-                      className="bg-mkopa-green text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2"
-                    >
-                      <CheckCircle className="w-4 h-4" /> Mark Disbursed
-                    </button>
-                    <button
-                      onClick={() => updateStatus(loan.id, 'rejected')}
-                      className="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2"
-                    >
-                      <XCircle className="w-4 h-4" /> Reject
-                    </button>
+                  {/* Right: Fee Status + Actions */}
+                  <div className="flex flex-col items-end gap-3 lg:min-w-[280px]">
+                    <div className="text-right">
+                      <p className="text-xs text-ink-500">Activation Fee</p>
+                      <p className="font-bold text-lg">{formatCurrency(loan.activationFee)}</p>
+                      <Badge variant={
+                        loan.activationFeeStatus === 'paid' ? 'success' :
+                        loan.activationFeeStatus === 'pending' ? 'warning' :
+                        loan.activationFeeStatus === 'failed' ? 'danger' : 'default'
+                      } className="mt-1">
+                        {loan.activationFeeStatus}
+                      </Badge>
+                    </div>
+
+                    {/* Actions */}
+                    {loan.status === 'pending' && loan.activationFeeStatus === 'paid' && (
+                      <div className="flex gap-2 w-full">
+                        <Button
+                          variant="success"
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => updateStatus(loan.id, 'disbursed')}
+                          disabled={actionLoading === loan.id}
+                        >
+                          <CheckCircle className="w-3 h-3" /> Disburse
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 text-red-600 border-red-200 hover:bg-red-50"
+                          onClick={() => updateStatus(loan.id, 'rejected')}
+                          disabled={actionLoading === loan.id}
+                        >
+                          <XCircle className="w-3 h-3" /> Reject
+                        </Button>
+                      </div>
+                    )}
+                    {loan.status === 'pending' && loan.activationFeeStatus !== 'paid' && (
+                      <div className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/50 rounded-lg p-2 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                        Waiting for activation fee payment
+                      </div>
+                    )}
+                    {loan.status === 'disbursed' && (
+                      <Badge variant="info"><CreditCard className="w-3 h-3" /> Disbursed</Badge>
+                    )}
                   </div>
-                )}
-                {loan.status === 'pending' && loan.activationFeeStatus !== 'paid' && (
-                  <div className="text-xs text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-lg p-3 max-w-xs">
-                    <Clock className="w-4 h-4 inline mr-1" />
-                    Waiting for activation fee payment. Customer needs to pay {formatKES(loan.activationFee)}.
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

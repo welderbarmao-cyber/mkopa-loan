@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, ArrowLeft, Smartphone, CheckCircle, AlertCircle, Shield, RefreshCw } from 'lucide-react';
+import { Loader2, ArrowLeft, Smartphone, CheckCircle, AlertCircle, Shield } from 'lucide-react';
 import { formatKES } from '@/lib/utils';
 import { detectNetwork } from '@/lib/xdigitex';
 
@@ -20,12 +20,6 @@ function PaymentContent() {
   const [loading, setLoading] = useState(true);
   const [initiating, setInitiating] = useState(false);
   const [error, setError] = useState('');
-  const [paymentData, setPaymentData] = useState<{
-    reference: string;
-    checkout_url: string;
-    stkStatus: string;
-    correspondent: string;
-  } | null>(null);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -85,18 +79,19 @@ function PaymentContent() {
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || 'Payment initiation failed');
+        setInitiating(false);
         return;
       }
-      setPaymentData({
-        reference: data.reference,
-        checkout_url: data.checkout_url,
-        stkStatus: data.stkStatus,
-        correspondent: data.correspondent || '',
-      });
+
+      // INSTANT redirect to status page - no iframe, no waiting
+      // The status page auto-polls every 2 seconds
+      if (data.reference) {
+        router.push(`/payment/status?reference=${data.reference}&loanId=${loanId}`);
+      }
     } catch {
       setError('Network error. Please try again.');
+      setInitiating(false);
     }
-    setInitiating(false);
   }
 
   if (status === 'loading' || !session || loading) {
@@ -138,7 +133,7 @@ function PaymentContent() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-md mx-auto">
         <div className="flex items-center gap-3 mb-6">
           <Link href="/dashboard" className="p-2 hover:bg-gray-200 rounded-lg">
             <ArrowLeft className="w-5 h-5" />
@@ -161,107 +156,51 @@ function PaymentContent() {
         </div>
 
         {/* Payment Form */}
-        {!paymentData ? (
-          <div className="bg-white rounded-xl shadow-sm p-5">
-            <h2 className="font-bold mb-3">Mobile Money Payment</h2>
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h2 className="font-bold mb-3">M-Pesa / Airtel STK Push</h2>
 
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-1">Phone Number</label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="07XX XXX XXX or +2547XX XXX XXX"
-                className="w-full border rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-mkopa-green/30 focus:border-mkopa-green outline-none"
-              />
-              {phone && (
-                <p className="text-xs mt-1">
-                  Detected: <span className="font-semibold capitalize text-mkopa-green">{network}</span>
-                  {(network === 'telkom' || network === 'unknown') && (
-                    <span className="text-red-500"> (Safaricom or Airtel only)</span>
-                  )}
-                </p>
-              )}
-            </div>
-
-            <button
-              onClick={handlePay}
-              disabled={initiating || !phone || network === 'unknown' || network === 'telkom'}
-              className="w-full gradient-mkopa text-white py-3 rounded-lg font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
-            >
-              <Smartphone className="w-5 h-5" />
-              {initiating ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Send STK Push'}
-            </button>
-
-            {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
-
-            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-xs text-blue-700 dark:text-blue-400">
-              <div className="flex items-center gap-2 mb-1">
-                <Shield className="w-4 h-4" />
-                <p className="font-semibold">How it works</p>
-              </div>
-              <ol className="list-decimal list-inside space-y-0.5 ml-2">
-                <li>Enter your M-Pesa/Airtel phone number</li>
-                <li>Click &quot;Send STK Push&quot;</li>
-                <li>Check your phone for the payment prompt</li>
-                <li>Enter your PIN to complete payment</li>
-              </ol>
-            </div>
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-1">Phone Number</label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="07XX XXX XXX or +2547XX XXX XXX"
+              className="w-full border rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-mkopa-green/30 focus:border-mkopa-green outline-none"
+              autoFocus
+            />
+            {phone && (
+              <p className="text-xs mt-1">
+                Detected: <span className="font-semibold capitalize text-mkopa-green">{network}</span>
+                {(network === 'telkom' || network === 'unknown') && (
+                  <span className="text-red-500"> (Safaricom or Airtel only)</span>
+                )}
+              </p>
+            )}
           </div>
-        ) : (
-          /* Embedded Checkout - stays within the app */
-          <div className="space-y-4">
-            {/* Status bar */}
-            <div className="bg-mkopa-green/10 border border-mkopa-green/20 rounded-xl p-4 flex items-center gap-3">
-              <Smartphone className="w-6 h-6 text-mkopa-green animate-pulse flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm text-mkopa-green">STK Push Sent!</p>
-                <p className="text-xs text-gray-600">Check your phone ({phone}) and enter your PIN.</p>
-              </div>
-              <button
-                onClick={() => setPaymentData(null)}
-                className="text-xs text-gray-500 hover:text-gray-700 flex-shrink-0"
-              >
-                Cancel
-              </button>
-            </div>
 
-            {/* Embedded Checkout Iframe */}
-            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-              <div className="p-3 border-b bg-gray-50 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold">Payment Checkout</p>
-                  <p className="text-xs text-gray-500">Ref: {paymentData.reference}</p>
-                </div>
-                <span className="text-xs bg-mkopa-green/10 text-mkopa-green px-2 py-0.5 rounded-full font-semibold">
-                  {paymentData.correspondent || 'Mobile Money'}
-                </span>
-              </div>
-              <iframe
-                src={paymentData.checkout_url}
-                className="w-full"
-                style={{ height: '500px', border: 'none' }}
-                title="Payment Checkout"
-              />
-            </div>
+          <button
+            onClick={handlePay}
+            disabled={initiating || !phone || network === 'unknown' || network === 'telkom'}
+            className="w-full gradient-mkopa text-white py-3 rounded-lg font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
+          >
+            {initiating ? (
+              <><Loader2 className="w-5 h-5 animate-spin" /> Sending STK Push...</>
+            ) : (
+              <><Smartphone className="w-5 h-5" /> Pay {formatKES(loan.activationFee)} Now</>
+            )}
+          </button>
 
-            {/* Action buttons */}
-            <div className="flex gap-2">
-              <Link
-                href={`/payment/status?reference=${paymentData.reference}&loanId=${loanId}`}
-                className="flex-1 gradient-mkopa text-white py-3 rounded-lg font-semibold text-center flex items-center justify-center gap-2"
-              >
-                <RefreshCw className="w-4 h-4" /> Check Payment Status
-              </Link>
-              <button
-                onClick={() => setPaymentData(null)}
-                className="px-4 py-3 border rounded-lg font-semibold text-sm"
-              >
-                Cancel
-              </button>
+          {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
+
+          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-xs text-blue-700 dark:text-blue-400">
+            <div className="flex items-center gap-2 mb-1">
+              <Shield className="w-4 h-4" />
+              <p className="font-semibold">Instant STK Push</p>
             </div>
+            <p>Enter your phone number and click pay. You&apos;ll receive an M-Pesa/Airtel prompt instantly on your phone. Enter your PIN to complete.</p>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

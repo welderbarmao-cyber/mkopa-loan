@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getAllKyc, getKycFileData, KycUpload } from '@/lib/edge-db';
 import { isR2Configured, getPresignedViewUrl } from '@/lib/r2';
+import { isGitHubConfigured, getFromGitHub } from '@/lib/github-storage';
 
 export async function GET(req: NextRequest) {
   try {
@@ -32,7 +33,34 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Try to get file data from separate Edge Config key first
+    // Check if this is a GitHub-stored document
+    if (doc.r2Key?.startsWith('github/') && isGitHubConfigured()) {
+      const filename = doc.r2Key.replace('github/', '');
+      const fileData = await getFromGitHub(filename);
+      if (fileData) {
+        return NextResponse.json({
+          documentType: doc.documentType,
+          contentType: doc.contentType || 'image/jpeg',
+          fileData,
+          storage: 'github',
+        });
+      }
+    }
+
+    // Check if fileName matches a GitHub filename
+    if (doc.fileName && isGitHubConfigured()) {
+      const fileData = await getFromGitHub(doc.fileName);
+      if (fileData) {
+        return NextResponse.json({
+          documentType: doc.documentType,
+          contentType: doc.contentType || 'image/jpeg',
+          fileData,
+          storage: 'github',
+        });
+      }
+    }
+
+    // Try Edge Config (chunked or single key)
     const fileData = await getKycFileData(docId);
     if (fileData?.fileData) {
       return NextResponse.json({
@@ -55,7 +83,7 @@ export async function GET(req: NextRequest) {
     }
 
     // If R2 is configured, return presigned URL
-    if (isR2Configured()) {
+    if (isR2Configured() && doc.r2Key && !doc.r2Key.startsWith('github/')) {
       try {
         const viewUrl = await getPresignedViewUrl(doc.r2Key);
         return NextResponse.json({
@@ -70,7 +98,7 @@ export async function GET(req: NextRequest) {
 
     // No file data available
     return NextResponse.json({
-      error: 'Document file not available. The file data may not have been stored.',
+      error: 'Document file not available.',
       r2Key: doc.r2Key,
       docId,
     }, { status: 404 });

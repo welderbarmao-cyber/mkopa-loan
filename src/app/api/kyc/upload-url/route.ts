@@ -3,7 +3,6 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { createKycUpload } from '@/lib/edge-db';
 import { isR2Configured, uploadToR2 } from '@/lib/r2';
-import { compressImage } from '@/lib/image-compress';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -27,26 +26,20 @@ export async function POST(req: NextRequest) {
     let storage: 'r2' | 'edge-config' = 'edge-config';
     let storedFileData: string | undefined = body.fileData;
 
-    // Compress the image before storing (reduces size for Edge Config)
-    if (body.fileData) {
-      const compressed = await compressImage(body.fileData);
-      storedFileData = compressed.data;
-      body.contentType = compressed.contentType;
-    }
-
-    // Try R2 first if configured
+    // Try R2 first if configured (no size limit)
     if (isR2Configured() && storedFileData) {
       try {
         const buffer = Buffer.from(storedFileData.split(',')[1] || storedFileData, 'base64');
         await uploadToR2(r2Key, buffer, body.contentType);
         storage = 'r2';
-        storedFileData = undefined; // Don't store in Edge Config if R2 worked
+        storedFileData = undefined;
       } catch {
         storage = 'edge-config';
       }
     }
 
-    // Create KYC upload record (with compressed fileData if storing in Edge Config)
+    // Store in Edge Config with chunking (no compression - preserves original quality)
+    // createKycUpload handles chunking automatically for large files
     const upload = await createKycUpload({
       userId,
       documentType: body.documentType,

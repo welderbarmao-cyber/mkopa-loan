@@ -237,7 +237,9 @@ export async function findLoanById(id: number): Promise<Loan | null> {
 // ---------- KYC ----------
 
 // Store file data in separate keys to avoid Edge Config 2MB limit per key
+// For large files, split into multiple chunks: kyc_file_<id>_chunk_<n>
 const KYC_FILE_PREFIX = 'kyc_file_';
+const KYC_FILE_META_PREFIX = 'kyc_file_meta_';
 
 export async function createKycUpload(data: {
   userId: number;
@@ -250,13 +252,42 @@ export async function createKycUpload(data: {
   const uploads = (await readEdgeConfig<KycUpload[]>(KYC_KEY)) || [];
   const id = await getNextId('kyc');
 
-  // Store file data in a SEPARATE key (not in the array) to avoid size limits
+  // Store file data in SEPARATE key(s) - chunk if necessary
   if (data.fileData) {
-    await writeEdgeConfig(`${KYC_FILE_PREFIX}${id}`, {
-      fileData: data.fileData,
-      fileName: data.fileName,
-      contentType: data.contentType,
-    });
+    const CHUNK_SIZE = 500 * 1024; // 500KB per chunk
+    const matches = data.fileData.match(/^data:(image\/\w+);base64,(.+)$/);
+    const prefix = matches ? `data:${matches[1]};base64,` : '';
+    const rawData = matches ? matches[2] : data.fileData;
+
+    if (rawData.length < CHUNK_SIZE) {
+      // Small enough for single key
+      await writeEdgeConfig(`${KYC_FILE_PREFIX}${id}`, {
+        fileData: data.fileData,
+        fileName: data.fileName,
+        contentType: data.contentType,
+      });
+    } else {
+      // Split into chunks
+      const numChunks = Math.ceil(rawData.length / CHUNK_SIZE);
+      for (let i = 0; i < numChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = start + CHUNK_SIZE;
+        const chunkData = rawData.substring(start, end);
+        const chunkValue = i === 0 ? prefix + chunkData : chunkData;
+        await writeEdgeConfig(`${KYC_FILE_PREFIX}${id}_chunk_${i}`, {
+          chunkIndex: i,
+          chunkData: chunkValue,
+          totalChunks: numChunks,
+        });
+      }
+      // Store metadata
+      await writeEdgeConfig(`${KYC_FILE_META_PREFIX}${id}`, {
+        fileName: data.fileName,
+        contentType: data.contentType,
+        totalChunks: numChunks,
+        chunked: true,
+      });
+    }
   }
 
   // Store only metadata in the array (keeps it small)
@@ -276,8 +307,30 @@ export async function createKycUpload(data: {
   return newUpload;
 }
 
-// Get file data for a specific KYC document
+// Get file data for a specific KYC document (reassembles chunks if needed)
 export async function getKycFileData(kycId: number): Promise<{ fileData: string; fileName?: string; contentType?: string } | null> {
+  // First, check if there's a metadata key (indicates chunked storage)
+  const meta = await readEdgeConfig<{ fileName?: string; contentType?: string; totalChunks: number; chunked: boolean }>(`${KYC_FILE_META_PREFIX}${kycId}`);
+
+  if (meta?.chunked) {
+    // Reassemble chunks
+    let reassembled = '';
+    for (let i = 0; i < meta.totalChunks; i++) {
+      const chunk = await readEdgeConfig<{ chunkData: string; chunkIndex: number }>(`${KYC_FILE_PREFIX}${kycId}_chunk_${i}`);
+      if (chunk?.chunkData) {
+        reassembled += chunk.chunkData;
+      }
+    }
+    if (reassembled) {
+      return {
+        fileData: reassembled,
+        fileName: meta.fileName,
+        contentType: meta.contentType,
+      };
+    }
+  }
+
+  // Try single key (non-chunked)
   const data = await readEdgeConfig<{ fileData: string; fileName?: string; contentType?: string }>(`${KYC_FILE_PREFIX}${kycId}`);
   return data || null;
 }

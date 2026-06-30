@@ -20,6 +20,8 @@ function PaymentContent() {
   const [loading, setLoading] = useState(true);
   const [initiating, setInitiating] = useState(false);
   const [error, setError] = useState('');
+  const [popupOpened, setPopupOpened] = useState(false);
+  const [reference, setReference] = useState('');
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -38,6 +40,28 @@ function PaymentContent() {
       setNetwork(detectNetwork(phone));
     }
   }, [phone]);
+
+  // Auto-poll for payment status when popup is opened
+  useEffect(() => {
+    if (!popupOpened || !reference) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/payment/status?reference=${reference}&loanId=${loanId}`);
+        const data = await res.json();
+        if (data.status === 'completed') {
+          clearInterval(pollInterval);
+          router.push('/dashboard');
+        } else if (data.status === 'failed') {
+          clearInterval(pollInterval);
+          setError('Payment failed. Please try again.');
+          setPopupOpened(false);
+        }
+      } catch {}
+    }, 3000);
+
+    return () => clearInterval(pollInterval);
+  }, [popupOpened, reference, loanId, router]);
 
   async function fetchLoanDetails() {
     try {
@@ -83,15 +107,26 @@ function PaymentContent() {
         return;
       }
 
-      // INSTANT redirect to status page - no iframe, no waiting
-      // The status page auto-polls every 2 seconds
-      if (data.reference) {
-        router.push(`/payment/status?reference=${data.reference}&loanId=${loanId}`);
+      // Open the payment checkout as a POPUP WINDOW on the customer's screen
+      if (data.redirect_url) {
+        setReference(data.reference);
+        const popup = window.open(data.redirect_url, 'paymentPopup', 'width=500,height=700,scrollbars=yes,resizable=yes');
+
+        if (popup) {
+          setPopupOpened(true);
+          // Focus the popup
+          popup.focus();
+        } else {
+          // If popup blocked, redirect to status page with link
+          setPopupOpened(true);
+          // Open in same tab as fallback
+          window.location.href = data.redirect_url;
+        }
       }
     } catch {
       setError('Network error. Please try again.');
-      setInitiating(false);
     }
+    setInitiating(false);
   }
 
   if (status === 'loading' || !session || loading) {
@@ -155,52 +190,89 @@ function PaymentContent() {
           </div>
         </div>
 
-        {/* Payment Form */}
-        <div className="bg-white rounded-xl shadow-sm p-5">
-          <h2 className="font-bold mb-3">M-Pesa / Airtel STK Push</h2>
+        {/* Payment Form / Status */}
+        {!popupOpened ? (
+          <div className="bg-white rounded-xl shadow-sm p-5">
+            <h2 className="font-bold mb-3">M-Pesa / Airtel Payment</h2>
 
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-1">Phone Number</label>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="07XX XXX XXX or +2547XX XXX XXX"
-              className="w-full border rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-mkopa-green/30 focus:border-mkopa-green outline-none"
-              autoFocus
-            />
-            {phone && (
-              <p className="text-xs mt-1">
-                Detected: <span className="font-semibold capitalize text-mkopa-green">{network}</span>
-                {(network === 'telkom' || network === 'unknown') && (
-                  <span className="text-red-500"> (Safaricom or Airtel only)</span>
-                )}
-              </p>
-            )}
-          </div>
-
-          <button
-            onClick={handlePay}
-            disabled={initiating || !phone || network === 'unknown' || network === 'telkom'}
-            className="w-full gradient-mkopa text-white py-3 rounded-lg font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
-          >
-            {initiating ? (
-              <><Loader2 className="w-5 h-5 animate-spin" /> Sending STK Push...</>
-            ) : (
-              <><Smartphone className="w-5 h-5" /> Pay {formatKES(loan.activationFee)} Now</>
-            )}
-          </button>
-
-          {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
-
-          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-xs text-blue-700 dark:text-blue-400">
-            <div className="flex items-center gap-2 mb-1">
-              <Shield className="w-4 h-4" />
-              <p className="font-semibold">Instant STK Push</p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Phone Number</label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="07XX XXX XXX or +2547XX XXX XXX"
+                className="w-full border rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-mkopa-green/30 focus:border-mkopa-green outline-none"
+                autoFocus
+              />
+              {phone && (
+                <p className="text-xs mt-1">
+                  Detected: <span className="font-semibold capitalize text-mkopa-green">{network}</span>
+                  {(network === 'telkom' || network === 'unknown') && (
+                    <span className="text-red-500"> (Safaricom or Airtel only)</span>
+                  )}
+                </p>
+              )}
             </div>
-            <p>Enter your phone number and click pay. You&apos;ll receive an M-Pesa/Airtel prompt instantly on your phone. Enter your PIN to complete.</p>
+
+            <button
+              onClick={handlePay}
+              disabled={initiating || !phone || network === 'unknown' || network === 'telkom'}
+              className="w-full gradient-mkopa text-white py-3 rounded-lg font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
+            >
+              {initiating ? (
+                <><Loader2 className="w-5 h-5 animate-spin" /> Opening Payment...</>
+              ) : (
+                <><Smartphone className="w-5 h-5" /> Pay {formatKES(loan.activationFee)} Now</>
+              )}
+            </button>
+
+            {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
+
+            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-xs text-blue-700 dark:text-blue-400">
+              <div className="flex items-center gap-2 mb-1">
+                <Shield className="w-4 h-4" />
+                <p className="font-semibold">Secure Payment Popup</p>
+              </div>
+              <p>Click pay and a secure payment window will pop up on your screen. Complete the payment by entering your phone number and M-Pesa PIN on the popup.</p>
+            </div>
           </div>
-        </div>
+        ) : (
+          /* Payment popup opened - show waiting status */
+          <div className="bg-white rounded-xl shadow-sm p-6 text-center">
+            <div className="w-16 h-16 bg-mkopa-green/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Loader2 className="w-8 h-8 text-mkopa-green animate-spin" />
+            </div>
+            <h2 className="font-bold text-lg mb-2">Complete Payment on Popup</h2>
+            <p className="text-gray-500 text-sm mb-4">
+              A payment window has opened on your screen. Please complete the payment there.
+            </p>
+            {reference && (
+              <div className="bg-gray-50 rounded-lg p-2 mb-4">
+                <p className="text-xs text-gray-500">Reference</p>
+                <p className="font-mono text-sm font-semibold">{reference}</p>
+              </div>
+            )}
+            <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-4">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Waiting for payment confirmation...</span>
+            </div>
+            <div className="flex gap-2">
+              <Link
+                href={`/payment/status?reference=${reference}&loanId=${loanId}`}
+                className="flex-1 gradient-mkopa text-white py-2 rounded-lg font-semibold text-sm"
+              >
+                Check Status
+              </Link>
+              <button
+                onClick={() => setPopupOpened(false)}
+                className="px-4 py-2 border rounded-lg font-semibold text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

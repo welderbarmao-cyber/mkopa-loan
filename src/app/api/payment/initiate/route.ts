@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { findUserById, findLoanById, updateLoan } from '@/lib/edge-db';
-import { initiatePayment, normalizePhone } from '@/lib/xdigitex';
+import { initiatePayment, normalizePhone, detectNetwork } from '@/lib/xdigitex';
 import { z } from 'zod';
 
 const initiateSchema = z.object({
@@ -35,13 +35,16 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
     const normalizedPhone = normalizePhone(body.phone);
+    const network = detectNetwork(body.phone);
 
-    // ALWAYS use 'mobile' gateway - it sends actual STK push AND returns a checkout_url
-    // that can be embedded in an iframe within our app
+    // Use safaricom/airtel gateway based on network - returns redirect_url
+    // that opens a payment checkout page ON THE CUSTOMER'S SCREEN
+    const gateway = network === 'airtel' ? 'airtel' : 'safaricom';
+
     const payment = await initiatePayment({
       amount: loan.activationFee,
       currency: 'KES',
-      gateway: 'mobile',
+      gateway,
       phone: normalizedPhone,
       email: user.email,
       first_name: user.name.split(' ')[0],
@@ -57,19 +60,16 @@ export async function POST(req: NextRequest) {
       activationFeeReference: payment.reference,
     });
 
+    // Return the redirect_url - frontend will open it as a popup on screen
     return NextResponse.json({
       success: true,
       reference: payment.reference,
       gateway: payment.gateway,
       amount: loan.activationFee,
-      // checkout_url can be embedded in iframe - shows "Check your phone" + auto-polls status
-      checkout_url: payment.checkout_url,
-      // STK push status
-      stkPushSent: payment.pawa_status === 'ACCEPTED' || payment.pawa_status === 'PENDING',
-      stkStatus: payment.pawa_status,
-      correspondent: payment.correspondent,
-      deposit_id: payment.deposit_id,
-      message: 'STK push sent to your phone. Enter your M-Pesa/Airtel PIN to complete payment.',
+      // This URL opens a payment checkout page on the customer's screen
+      redirect_url: payment.redirect_url,
+      order_tracking_id: payment.order_tracking_id,
+      message: 'Payment checkout opened. Complete payment on the popup screen.',
     });
   } catch (e: unknown) {
     if (e instanceof z.ZodError) {

@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, ArrowLeft, Smartphone, CheckCircle, AlertCircle, XCircle, ExternalLink, Shield } from 'lucide-react';
+import { Loader2, ArrowLeft, Smartphone, CheckCircle, AlertCircle, Shield, RefreshCw } from 'lucide-react';
 import { formatKES } from '@/lib/utils';
 import { detectNetwork } from '@/lib/xdigitex';
 
@@ -14,7 +14,7 @@ function PaymentContent() {
   const searchParams = useSearchParams();
   const loanId = searchParams.get('loanId');
 
-  const [loan, setLoan] = useState<{ id: number; amount: number; activationFee: number; activationFeeStatus: string; activationFeeReference?: string } | null>(null);
+  const [loan, setLoan] = useState<{ id: number; amount: number; activationFee: number; activationFeeStatus: string } | null>(null);
   const [phone, setPhone] = useState('');
   const [network, setNetwork] = useState<'safaricom' | 'airtel' | 'telkom' | 'unknown'>('unknown');
   const [loading, setLoading] = useState(true);
@@ -22,11 +22,9 @@ function PaymentContent() {
   const [error, setError] = useState('');
   const [paymentData, setPaymentData] = useState<{
     reference: string;
-    redirect_url?: string;
-    paymentType: string;
-    stkStatus?: string;
-    correspondent?: string;
-    message: string;
+    checkout_url: string;
+    stkStatus: string;
+    correspondent: string;
   } | null>(null);
 
   useEffect(() => {
@@ -91,11 +89,9 @@ function PaymentContent() {
       }
       setPaymentData({
         reference: data.reference,
-        redirect_url: data.redirect_url,
-        paymentType: data.paymentType,
+        checkout_url: data.checkout_url,
         stkStatus: data.stkStatus,
-        correspondent: data.correspondent,
-        message: data.message,
+        correspondent: data.correspondent || '',
       });
     } catch {
       setError('Network error. Please try again.');
@@ -151,27 +147,20 @@ function PaymentContent() {
         </div>
 
         {/* Payment Summary */}
-        <div className="bg-white rounded-xl shadow-sm p-5 mb-4">
-          <h2 className="font-bold mb-3">Payment Summary</h2>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-gray-500 text-sm">Loan Amount</span>
-              <span className="font-medium text-sm">{formatKES(loan.amount)}</span>
+        <div className="bg-white rounded-xl shadow-sm p-4 mb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-gray-500">Activation Fee</p>
+              <p className="text-xl font-bold text-mkopa-orange">{formatKES(loan.activationFee)}</p>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500 text-sm">Loan ID</span>
-              <span className="font-medium text-sm">#{loan.id}</span>
-            </div>
-            <div className="border-t pt-2 mt-2">
-              <div className="flex justify-between">
-                <span className="font-semibold">Activation Fee</span>
-                <span className="font-bold text-mkopa-orange text-lg">{formatKES(loan.activationFee)}</span>
-              </div>
+            <div className="text-right">
+              <p className="text-xs text-gray-500">Loan #{loan.id}</p>
+              <p className="text-sm font-medium">{formatKES(loan.amount)}</p>
             </div>
           </div>
         </div>
 
-        {/* Payment Form / Checkout */}
+        {/* Payment Form */}
         {!paymentData ? (
           <div className="bg-white rounded-xl shadow-sm p-5">
             <h2 className="font-bold mb-3">Mobile Money Payment</h2>
@@ -201,7 +190,7 @@ function PaymentContent() {
               className="w-full gradient-mkopa text-white py-3 rounded-lg font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
             >
               <Smartphone className="w-5 h-5" />
-              {initiating ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Proceed to Payment'}
+              {initiating ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Send STK Push'}
             </button>
 
             {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
@@ -209,91 +198,68 @@ function PaymentContent() {
             <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-xs text-blue-700 dark:text-blue-400">
               <div className="flex items-center gap-2 mb-1">
                 <Shield className="w-4 h-4" />
-                <p className="font-semibold">Secure Payment</p>
+                <p className="font-semibold">How it works</p>
               </div>
-              <p>Payment is processed through a secure checkout. Your financial details are encrypted and never stored.</p>
+              <ol className="list-decimal list-inside space-y-0.5 ml-2">
+                <li>Enter your M-Pesa/Airtel phone number</li>
+                <li>Click &quot;Send STK Push&quot;</li>
+                <li>Check your phone for the payment prompt</li>
+                <li>Enter your PIN to complete payment</li>
+              </ol>
             </div>
           </div>
-        ) : paymentData.paymentType === 'iframe' && paymentData.redirect_url ? (
+        ) : (
           /* Embedded Checkout - stays within the app */
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <div className="p-4 border-b flex items-center justify-between">
-              <div>
-                <h2 className="font-bold text-sm">Secure Payment Checkout</h2>
-                <p className="text-xs text-gray-500">Ref: {paymentData.reference}</p>
+          <div className="space-y-4">
+            {/* Status bar */}
+            <div className="bg-mkopa-green/10 border border-mkopa-green/20 rounded-xl p-4 flex items-center gap-3">
+              <Smartphone className="w-6 h-6 text-mkopa-green animate-pulse flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm text-mkopa-green">STK Push Sent!</p>
+                <p className="text-xs text-gray-600">Check your phone ({phone}) and enter your PIN.</p>
               </div>
               <button
                 onClick={() => setPaymentData(null)}
-                className="text-xs text-gray-500 hover:text-gray-700"
+                className="text-xs text-gray-500 hover:text-gray-700 flex-shrink-0"
               >
                 Cancel
               </button>
             </div>
-            {/* Embed the checkout page in an iframe - user stays in our app */}
-            <iframe
-              src={paymentData.redirect_url}
-              className="w-full"
-              style={{ height: '600px', border: 'none' }}
-              title="Secure Payment Checkout"
-            />
-            <div className="p-3 border-t bg-gray-50 flex items-center justify-between">
-              <a
-                href={paymentData.redirect_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-mkopa-green font-semibold flex items-center gap-1 hover:underline"
-              >
-                <ExternalLink className="w-3 h-3" /> Open in new tab
-              </a>
+
+            {/* Embedded Checkout Iframe */}
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <div className="p-3 border-b bg-gray-50 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold">Payment Checkout</p>
+                  <p className="text-xs text-gray-500">Ref: {paymentData.reference}</p>
+                </div>
+                <span className="text-xs bg-mkopa-green/10 text-mkopa-green px-2 py-0.5 rounded-full font-semibold">
+                  {paymentData.correspondent || 'Mobile Money'}
+                </span>
+              </div>
+              <iframe
+                src={paymentData.checkout_url}
+                className="w-full"
+                style={{ height: '500px', border: 'none' }}
+                title="Payment Checkout"
+              />
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-2">
               <Link
                 href={`/payment/status?reference=${paymentData.reference}&loanId=${loanId}`}
-                className="text-xs text-mkopa-green font-semibold hover:underline"
+                className="flex-1 gradient-mkopa text-white py-3 rounded-lg font-semibold text-center flex items-center justify-center gap-2"
               >
-                I&apos;ve completed payment →
+                <RefreshCw className="w-4 h-4" /> Check Payment Status
               </Link>
+              <button
+                onClick={() => setPaymentData(null)}
+                className="px-4 py-3 border rounded-lg font-semibold text-sm"
+              >
+                Cancel
+              </button>
             </div>
-          </div>
-        ) : (
-          /* STK Push Status */
-          <div className="bg-white rounded-xl shadow-sm p-6 text-center">
-            {paymentData.stkStatus === 'REJECTED' ? (
-              <>
-                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <XCircle className="w-8 h-8 text-red-600" />
-                </div>
-                <h2 className="font-bold text-lg mb-2">STK Push Failed</h2>
-                <p className="text-gray-500 text-sm mb-4">{paymentData.message}</p>
-                <button
-                  onClick={() => setPaymentData(null)}
-                  className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold"
-                >
-                  Try Again
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="w-16 h-16 bg-mkopa-green/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Smartphone className="w-8 h-8 text-mkopa-green animate-pulse" />
-                </div>
-                <h2 className="font-bold text-lg mb-2">Check Your Phone!</h2>
-                <p className="text-gray-500 text-sm mb-2">{paymentData.message}</p>
-                {paymentData.correspondent && (
-                  <p className="text-xs text-gray-400 mb-4">
-                    Network: <span className="font-semibold">{paymentData.correspondent}</span>
-                  </p>
-                )}
-                <div className="bg-gray-50 dark:bg-ink-800 rounded-lg p-3 mb-4">
-                  <p className="text-xs text-gray-500">Reference</p>
-                  <p className="font-mono text-sm font-semibold">{paymentData.reference}</p>
-                </div>
-                <Link
-                  href={`/payment/status?reference=${paymentData.reference}&loanId=${loanId}`}
-                  className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold inline-block"
-                >
-                  Check Payment Status
-                </Link>
-              </>
-            )}
           </div>
         )}
       </div>

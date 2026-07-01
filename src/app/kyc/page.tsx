@@ -71,12 +71,7 @@ export default function KycPage() {
     setUploading(docType);
     setError('');
     try {
-      if (file.size > 10 * 1024 * 1024) {
-        setError('File too large. Maximum size is 10MB.');
-        setUploading(null);
-        return;
-      }
-
+      // No size or quality restrictions - any image allowed
       const base64Data = await fileToBase64(file);
 
       const res = await fetch('/api/kyc/upload-url', {

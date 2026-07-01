@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, CheckCircle, ArrowLeft, ShieldCheck, AlertCircle, FileImage } from 'lucide-react';
+import { Loader2, CheckCircle, ArrowLeft, ShieldCheck, AlertCircle, User, CreditCard } from 'lucide-react';
 
-type DocType = 'national_id' | 'passport';
+type DocType = 'national_id_front' | 'national_id_back' | 'selfie';
 
 interface DocState {
   r2Key: string | null;
@@ -14,12 +14,19 @@ interface DocState {
   preview: string;
 }
 
+const DOC_CONFIG: Record<DocType, { label: string; icon: React.ComponentType<{ className?: string }>; desc: string }> = {
+  national_id_front: { label: 'National ID (Front)', icon: CreditCard, desc: 'Front side of your ID' },
+  national_id_back: { label: 'National ID (Back)', icon: CreditCard, desc: 'Back side of your ID' },
+  selfie: { label: 'Selfie / Passport Photo', icon: User, desc: 'Clear photo of your face' },
+};
+
 export default function KycPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [docs, setDocs] = useState<Record<DocType, DocState | null>>({
-    national_id: null,
-    passport: null,
+    national_id_front: null,
+    national_id_back: null,
+    selfie: null,
   });
   const [uploading, setUploading] = useState<DocType | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -51,7 +58,6 @@ export default function KycPage() {
     } catch {}
   }
 
-  // Convert file to base64
   function fileToBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -65,23 +71,21 @@ export default function KycPage() {
     setUploading(docType);
     setError('');
     try {
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        setError('File too large. Maximum size is 5MB.');
+      if (file.size > 10 * 1024 * 1024) {
+        setError('File too large. Maximum size is 10MB.');
         setUploading(null);
         return;
       }
 
-      // Convert to base64
       const base64Data = await fileToBase64(file);
 
-      // Upload via our API (which stores in R2 or Edge Config)
       const res = await fetch('/api/kyc/upload-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           documentType: docType,
           contentType: file.type,
+          fileName: file.name,
           fileData: base64Data,
         }),
       });
@@ -110,8 +114,9 @@ export default function KycPage() {
     setError('');
     try {
       const documents = [];
-      if (docs.national_id?.r2Key) documents.push({ documentType: 'national_id', r2Key: docs.national_id.r2Key });
-      if (docs.passport?.r2Key) documents.push({ documentType: 'passport', r2Key: docs.passport.r2Key });
+      if (docs.national_id_front?.r2Key) documents.push({ documentType: 'national_id_front', r2Key: docs.national_id_front.r2Key });
+      if (docs.national_id_back?.r2Key) documents.push({ documentType: 'national_id_back', r2Key: docs.national_id_back.r2Key });
+      if (docs.selfie?.r2Key) documents.push({ documentType: 'selfie', r2Key: docs.selfie.r2Key });
 
       if (documents.length === 0) {
         setError('Please upload at least one document');
@@ -160,10 +165,12 @@ export default function KycPage() {
     );
   }
 
+  const allUploaded = docs.national_id_front && docs.national_id_back && docs.selfie;
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-2xl mx-auto">
-        <div className="flex items-center gap-3 mb-8">
+        <div className="flex items-center gap-3 mb-6">
           <Link href="/dashboard" className="p-2 hover:bg-gray-200 rounded-lg">
             <ArrowLeft className="w-5 h-5" />
           </Link>
@@ -185,61 +192,65 @@ export default function KycPage() {
             <ShieldCheck className="w-6 h-6 text-mkopa-green" />
             <div>
               <h2 className="font-bold">Upload Your Documents</h2>
-              <p className="text-sm text-gray-500">Upload your National ID or Passport for verification. Documents are stored securely in Cloudflare R2.</p>
+              <p className="text-sm text-gray-500">Upload all 3 documents for verification</p>
             </div>
           </div>
 
           <div className="space-y-4">
-            {(['national_id', 'passport'] as DocType[]).map(docType => (
-              <div key={docType} className="border-2 border-dashed rounded-xl p-6 text-center">
-                {docs[docType] ? (
-                  <div className="space-y-3">
-                    {docs[docType]?.preview && (
-                      <div className="flex justify-center">
-                        <img
-                          src={docs[docType]?.preview}
-                          alt={docType}
-                          className="max-h-40 rounded-lg border"
-                        />
-                      </div>
-                    )}
-                    <div className="flex items-center justify-center gap-2 text-mkopa-green">
-                      <CheckCircle className="w-5 h-5" />
-                      <span className="font-medium capitalize">{docType.replace('_', ' ')} uploaded</span>
-                    </div>
-                    <p className="text-xs text-gray-400">{docs[docType]?.fileName}</p>
-                    <button
-                      onClick={() => setDocs(prev => ({ ...prev, [docType]: null }))}
-                      className="text-xs text-red-500 hover:underline"
-                    >
-                      Remove and re-upload
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <FileImage className="w-8 h-8 mx-auto text-gray-400 mb-2" />
-                    <p className="font-medium capitalize mb-1">{docType.replace('_', ' ')}</p>
-                    <p className="text-xs text-gray-400 mb-3">PNG, JPG up to 5MB</p>
-                    {uploading === docType ? (
+            {(['national_id_front', 'national_id_back', 'selfie'] as DocType[]).map(docType => {
+              const config = DOC_CONFIG[docType];
+              const Icon = config.icon;
+              return (
+                <div key={docType} className="border-2 border-dashed rounded-xl p-6 text-center">
+                  {docs[docType] ? (
+                    <div className="space-y-3">
+                      {docs[docType]?.preview && (
+                        <div className="flex justify-center">
+                          <img
+                            src={docs[docType]?.preview}
+                            alt={docType}
+                            className="max-h-40 rounded-lg border"
+                          />
+                        </div>
+                      )}
                       <div className="flex items-center justify-center gap-2 text-mkopa-green">
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        <span className="text-sm">Uploading to R2...</span>
+                        <CheckCircle className="w-5 h-5" />
+                        <span className="font-medium">{config.label} uploaded</span>
                       </div>
-                    ) : (
-                      <label className="cursor-pointer text-sm text-mkopa-green font-semibold hover:underline">
-                        Choose File
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0], docType)}
-                        />
-                      </label>
-                    )}
-                  </>
-                )}
-              </div>
-            ))}
+                      <p className="text-xs text-gray-400">{docs[docType]?.fileName}</p>
+                      <button
+                        onClick={() => setDocs(prev => ({ ...prev, [docType]: null }))}
+                        className="text-xs text-red-500 hover:underline"
+                      >
+                        Remove and re-upload
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <Icon className="w-8 h-8 mx-auto text-gray-400 mb-2" />
+                      <p className="font-medium mb-1">{config.label}</p>
+                      <p className="text-xs text-gray-400 mb-3">{config.desc}</p>
+                      {uploading === docType ? (
+                        <div className="flex items-center justify-center gap-2 text-mkopa-green">
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          <span className="text-sm">Uploading...</span>
+                        </div>
+                      ) : (
+                        <label className="cursor-pointer text-sm text-mkopa-green font-semibold hover:underline">
+                          Choose File
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0], docType)}
+                          />
+                        </label>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {error && <p className="text-red-500 text-sm mt-4">{error}</p>}
@@ -247,13 +258,15 @@ export default function KycPage() {
 
           <button
             onClick={handleSubmit}
-            disabled={submitting || (!docs.national_id && !docs.passport)}
+            disabled={submitting || (!docs.national_id_front && !docs.national_id_back && !docs.selfie)}
             className="w-full mt-6 gradient-mkopa text-white py-3 rounded-lg font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
           >
             {submitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting...</> : 'Submit for Review'}
           </button>
           <p className="text-xs text-gray-400 text-center mt-3">
-            Upload at least one document. Both are recommended for faster approval. Documents are encrypted and stored in Cloudflare R2.
+            {allUploaded
+              ? 'All documents uploaded. Click submit to send for review.'
+              : 'Upload all 3 documents for faster approval. At least one is required.'}
           </p>
         </div>
       </div>

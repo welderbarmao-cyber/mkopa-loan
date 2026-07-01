@@ -7,7 +7,7 @@ import { isGitHubConfigured, uploadToGitHub } from '@/lib/github-storage';
 import { z } from 'zod';
 
 const schema = z.object({
-  documentType: z.enum(['national_id', 'passport']),
+  documentType: z.enum(['national_id_front', 'national_id_back', 'selfie']),
   contentType: z.string().default('image/jpeg'),
   fileName: z.string().optional(),
   fileData: z.string().optional(),
@@ -46,15 +46,13 @@ export async function POST(req: NextRequest) {
       try {
         await uploadToGitHub(ghFilename, storedFileData);
         storage = 'github';
-        storedFileData = undefined; // Don't store in Edge Config
+        storedFileData = undefined;
       } catch {
-        // GitHub failed, fall back to Edge Config
         storage = 'edge-config';
       }
     }
 
     // Create KYC upload record
-    // Store fileData in Edge Config only as last resort (with chunking)
     const upload = await createKycUpload({
       userId,
       documentType: body.documentType,

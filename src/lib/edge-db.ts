@@ -41,8 +41,8 @@ export interface Loan {
 export interface KycUpload {
   id: number;
   userId: number;
-  // Only national_id and passport (no selfie)
-  documentType: 'national_id' | 'passport';
+  // KYC document types: National ID front, National ID back, Selfie/Passport photo
+  documentType: 'national_id_front' | 'national_id_back' | 'selfie';
   r2Key: string;
   status: 'pending' | 'approved' | 'rejected';
   rejectionReason?: string;
@@ -243,7 +243,7 @@ const KYC_FILE_META_PREFIX = 'kyc_file_meta_';
 
 export async function createKycUpload(data: {
   userId: number;
-  documentType: 'national_id' | 'passport';
+  documentType: 'national_id_front' | 'national_id_back' | 'selfie';
   r2Key: string;
   fileData?: string;
   fileName?: string;

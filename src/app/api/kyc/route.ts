@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 const submitKycSchema = z.object({
   documents: z.array(z.object({
-    documentType: z.enum(['national_id', 'passport']),
+    documentType: z.enum(['national_id_front', 'national_id_back', 'selfie']),
     r2Key: z.string(),
   })).min(1, 'At least one document is required'),
 });

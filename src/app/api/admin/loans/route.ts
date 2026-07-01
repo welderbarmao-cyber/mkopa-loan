@@ -38,6 +38,21 @@ export async function GET() {
         activationFeeReference: loan.activationFeeReference,
         activationFeePaidAt: loan.activationFeePaidAt,
         createdAt: loan.createdAt,
+        // Personal details
+        fullName: loan.fullName,
+        nationalId: loan.nationalId,
+        dob: loan.dob,
+        gender: loan.gender,
+        address: loan.address,
+        city: loan.city,
+        // Financial details
+        occupation: loan.occupation,
+        employer: loan.employer,
+        incomeRange: loan.incomeRange,
+        dependants: loan.dependants,
+        mpesaPhone: loan.mpesaPhone,
+        // Guarantor
+        guarantor: loan.guarantor,
       };
     });
 

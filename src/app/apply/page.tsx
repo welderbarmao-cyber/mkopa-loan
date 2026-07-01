@@ -3,11 +3,30 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { LOAN_PRODUCTS, calculateLoanFee, calculateRepayment, calculateActivationFee, formatKES } from '@/lib/utils';
+import { LOAN_PRODUCTS, calculateActivationFee, formatKES } from '@/lib/utils';
 import { ArrowLeft, ArrowRight, CheckCircle, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
-const STEPS = ['Product', 'Details', 'Review'];
+const STEPS = ['Product', 'Personal', 'Financial', 'Guarantor', 'Review'];
+
+const OCCUPATIONS = [
+  'Employed (Full-time)',
+  'Employed (Part-time)',
+  'Self-employed / Business',
+  'Freelancer / Contractor',
+  'Student',
+  'Retired',
+  'Unemployed',
+];
+
+const INCOME_RANGES = [
+  'Below KES 10,000',
+  'KES 10,000 - 25,000',
+  'KES 25,000 - 50,000',
+  'KES 50,000 - 100,000',
+  'KES 100,000 - 250,000',
+  'Above KES 250,000',
+];
 
 export default function ApplyPage() {
   const router = useRouter();
@@ -17,12 +36,41 @@ export default function ApplyPage() {
   const [error, setError] = useState('');
   const [blocker, setBlocker] = useState<{ type: string; message: string } | null>(null);
 
+  // Product
   const [product, setProduct] = useState('');
   const [amount, setAmount] = useState('');
   const [term, setTerm] = useState('');
   const [purpose, setPurpose] = useState('');
 
-  const [user, setUser] = useState<{ kycStatus: string; loanLimit: number; name: string; email: string; phone: string } | null>(null);
+  // Personal details
+  const [fullName, setFullName] = useState('');
+  const [nationalId, setNationalId] = useState('');
+  const [dob, setDob] = useState('');
+  const [gender, setGender] = useState('');
+  const [maritalStatus, setMaritalStatus] = useState('');
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+
+  // Financial details
+  const [occupation, setOccupation] = useState('');
+  const [employer, setEmployer] = useState('');
+  const [jobTitle, setJobTitle] = useState('');
+  const [incomeRange, setIncomeRange] = useState('');
+  const [dependants, setDependants] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [bankAccount, setBankAccount] = useState('');
+  const [mpesaPhone, setMpesaPhone] = useState('');
+
+  // Guarantor
+  const [gName, setGName] = useState('');
+  const [gPhone, setGPhone] = useState('');
+  const [gEmail, setGEmail] = useState('');
+  const [gRelation, setGRelation] = useState('');
+  const [gOccupation, setGOccupation] = useState('');
+  const [gIncome, setGIncome] = useState('');
+  const [gIdNumber, setGIdNumber] = useState('');
+
+
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -41,24 +89,31 @@ export default function ApplyPage() {
       const res = await fetch('/api/dashboard');
       const data = await res.json();
       if (data.user) {
-        setUser(data.user);
-        // Only check KYC - no loan limit requirement
+
         if (data.user.kycStatus !== 'approved') {
           setBlocker({
             type: 'KYC_REQUIRED',
             message: 'You need to complete KYC verification before applying for a loan.',
           });
         }
-        // No loan limit check - customer can choose any amount
+        // Pre-fill name
+        if (data.user.name) setFullName(data.user.name);
+        if (data.user.phone) setMpesaPhone(data.user.phone);
       }
     } catch {}
   }
 
   const selectedProduct = LOAN_PRODUCTS.find((p) => p.id === product);
   const amt = parseInt(amount) || 0;
-  const fee = calculateLoanFee(amt);
   const activationFee = calculateActivationFee(amt);
-  const repayment = selectedProduct && amt && parseInt(term) ? calculateRepayment(amt, selectedProduct.rate, parseInt(term)) : null;
+
+  function validateStep(s: number): boolean {
+    if (s === 0) return !!product;
+    if (s === 1) return !!fullName && !!nationalId && !!dob && !!gender && !!address && !!city;
+    if (s === 2) return !!occupation && !!incomeRange && !!dependants && !!mpesaPhone;
+    if (s === 3) return !!gName && !!gPhone && !!gRelation && !!gOccupation && !!gIncome && !!gIdNumber;
+    return true;
+  }
 
   async function handleSubmit() {
     setLoading(true);
@@ -72,6 +127,12 @@ export default function ApplyPage() {
           termMonths: parseInt(term),
           productType: product,
           purpose,
+          // Personal
+          fullName, nationalId, dob, gender, maritalStatus, address, city,
+          // Financial
+          occupation, employer, jobTitle, incomeRange, dependants, bankName, bankAccount, mpesaPhone,
+          // Guarantor
+          guarantor: { name: gName, phone: gPhone, email: gEmail, relation: gRelation, occupation: gOccupation, incomeRange: gIncome, idNumber: gIdNumber },
         }),
       });
       const data = await res.json();
@@ -79,7 +140,6 @@ export default function ApplyPage() {
         setError(data.error || 'Failed');
         return;
       }
-      // Redirect to payment page
       router.push(`/payment?loanId=${data.loanId}`);
     } catch {
       setError('Network error');
@@ -95,7 +155,6 @@ export default function ApplyPage() {
     );
   }
 
-  // Show blocker if user can't apply
   if (blocker) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -105,24 +164,21 @@ export default function ApplyPage() {
           </div>
           <h1 className="text-2xl font-bold mb-2">Action Required</h1>
           <p className="text-gray-500 mb-6">{blocker.message}</p>
-          {blocker.type === 'KYC_REQUIRED' ? (
-            <Link href="/kyc" className="gradient-mkopa text-white px-6 py-3 rounded-lg font-semibold inline-block">
-              Complete KYC
-            </Link>
-          ) : (
-            <Link href="/dashboard" className="gradient-mkopa text-white px-6 py-3 rounded-lg font-semibold inline-block">
-              Back to Dashboard
-            </Link>
-          )}
+          <Link href="/kyc" className="gradient-mkopa text-white px-6 py-3 rounded-lg font-semibold inline-block">
+            Complete KYC
+          </Link>
         </div>
       </div>
     );
   }
 
+  const inputCls = "w-full border rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-mkopa-green/30 focus:border-mkopa-green outline-none";
+  const labelCls = "block text-sm font-medium mb-1";
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-2xl mx-auto">
-        <div className="flex items-center gap-3 mb-8">
+        <div className="flex items-center gap-3 mb-6">
           <button onClick={() => step > 0 ? setStep(step - 1) : router.push('/dashboard')} className="p-2 hover:bg-gray-200 rounded-lg">
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -130,14 +186,14 @@ export default function ApplyPage() {
         </div>
 
         {/* Steps */}
-        <div className="flex items-center gap-2 mb-8">
+        <div className="flex items-center gap-1 mb-6 overflow-x-auto pb-2">
           {STEPS.map((s, i) => (
-            <div key={s} className="flex items-center gap-2 flex-1">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${step >= i ? 'bg-mkopa-green text-white' : 'bg-gray-200 text-gray-500'}`}>
-                {step > i ? <CheckCircle className="w-4 h-4" /> : i + 1}
+            <div key={s} className="flex items-center gap-1 flex-shrink-0">
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${step >= i ? 'bg-mkopa-green text-white' : 'bg-gray-200 text-gray-500'}`}>
+                {step > i ? <CheckCircle className="w-3.5 h-3.5" /> : i + 1}
               </div>
-              <span className={`text-xs hidden sm:block ${step >= i ? 'text-mkopa-green font-medium' : 'text-gray-400'}`}>{s}</span>
-              {i < 2 && <div className={`flex-1 h-0.5 ${step > i ? 'bg-mkopa-green' : 'bg-gray-200'}`} />}
+              <span className={`text-xs whitespace-nowrap ${step >= i ? 'text-mkopa-green font-medium' : 'text-gray-400'}`}>{s}</span>
+              {i < 4 && <div className={`w-4 h-0.5 ${step > i ? 'bg-mkopa-green' : 'bg-gray-200'}`} />}
             </div>
           ))}
         </div>
@@ -146,103 +202,267 @@ export default function ApplyPage() {
           {/* Step 0: Product */}
           {step === 0 && (
             <div className="space-y-3">
-              <h2 className="font-bold text-lg mb-4">Select Loan Product</h2>
+              <h2 className="font-bold text-lg mb-2">Select Loan Product & Amount</h2>
               {LOAN_PRODUCTS.map((p) => (
                 <button key={p.id} onClick={() => setProduct(p.id)}
-                  className={`w-full text-left p-4 rounded-xl border-2 transition ${product === p.id ? 'border-mkopa-green bg-green-50' : 'border-gray-200 hover:border-mkopa-green/40'}`}>
-                  <div className="font-semibold">{p.name}</div>
-                  <div className="text-sm text-gray-500 mt-1">{p.rate}% p.a. · KES {p.min.toLocaleString()} – {p.max.toLocaleString()}</div>
+                  className={`w-full text-left p-3 rounded-xl border-2 transition ${product === p.id ? 'border-mkopa-green bg-green-50' : 'border-gray-200 hover:border-mkopa-green/40'}`}>
+                  <div className="font-semibold text-sm">{p.name}</div>
+                  <div className="text-xs text-gray-500 mt-1">{p.rate}% p.a. · KES {p.min.toLocaleString()} – {p.max.toLocaleString()}</div>
                 </button>
               ))}
-              <div className="flex justify-end pt-4">
-                <button disabled={!product} onClick={() => setStep(1)} className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-40 flex items-center gap-2">
+              {selectedProduct && (
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div>
+                    <label className={labelCls}>Amount (KES)</label>
+                    <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} min={selectedProduct.min} max={selectedProduct.max} className={inputCls} placeholder="5,000" />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Term (Months)</label>
+                    <input type="number" value={term} onChange={(e) => setTerm(e.target.value)} min={selectedProduct.minTerm} max={selectedProduct.maxTerm} className={inputCls} placeholder="12" />
+                  </div>
+                </div>
+              )}
+              <div>
+                <label className={labelCls}>Purpose (Optional)</label>
+                <textarea value={purpose} onChange={(e) => setPurpose(e.target.value)} rows={2} className={inputCls} placeholder="What will you use the loan for?" />
+              </div>
+              <div className="flex justify-end pt-2">
+                <button disabled={!validateStep(0) || !amount || !term} onClick={() => setStep(1)} className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-40 flex items-center gap-2">
                   Next <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
           )}
 
-          {/* Step 1: Details */}
-          {step === 1 && selectedProduct && (
-            <div className="space-y-4">
-              <h2 className="font-bold text-lg mb-2">Loan Details</h2>
-              <div className="bg-green-50 p-3 rounded-lg text-sm text-gray-600">{selectedProduct.name} · {selectedProduct.rate}% p.a.</div>
-
+          {/* Step 1: Personal Details */}
+          {step === 1 && (
+            <div className="space-y-3">
+              <h2 className="font-bold text-lg mb-2">Personal Details</h2>
               <div>
-                <label className="block text-sm font-medium mb-1">Loan Amount (KES)</label>
-                <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} min={selectedProduct.min} max={selectedProduct.max} className="w-full border rounded-lg px-4 py-2.5 text-sm" />
-                <p className="text-xs text-gray-400 mt-1">
-                  Min: {formatKES(selectedProduct.min)} · Max: {formatKES(selectedProduct.max)}
-                </p>
-                {user && user.loanLimit > 0 && (
-                  <p className="text-xs text-mkopa-green mt-1">
-                    Suggested limit: {formatKES(user.loanLimit)} (you can choose any amount up to {formatKES(selectedProduct.max)})
-                  </p>
-                )}
+                <label className={labelCls}>Full Name (as per ID) *</label>
+                <input value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputCls} placeholder="John Doe" />
               </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Term (Months)</label>
-                <input type="number" value={term} onChange={(e) => setTerm(e.target.value)} min={selectedProduct.minTerm} max={selectedProduct.maxTerm} className="w-full border rounded-lg px-4 py-2.5 text-sm" />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Purpose (Optional)</label>
-                <textarea value={purpose} onChange={(e) => setPurpose(e.target.value)} rows={2} className="w-full border rounded-lg px-4 py-2.5 text-sm" placeholder="What will you use the loan for?" />
-              </div>
-
-              {repayment && (
-                <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                  <h3 className="font-semibold text-sm">Cost Breakdown</h3>
-                  <div className="grid grid-cols-2 gap-3 text-center">
-                    <div><p className="text-xs text-gray-500">Monthly</p><p className="font-bold">{formatKES(repayment.monthly)}</p></div>
-                    <div><p className="text-xs text-gray-500">Total Repayment</p><p className="font-bold">{formatKES(repayment.total)}</p></div>
-                    <div><p className="text-xs text-gray-500">Processing Fee</p><p className="font-bold text-mkopa-orange">{formatKES(fee)}</p></div>
-                    <div className="bg-orange-50 rounded p-2"><p className="text-xs text-gray-500">Activation Fee</p><p className="font-bold text-mkopa-orange">{formatKES(activationFee)}</p></div>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-2">Activation fee formula: KES 199 per KES 5,000 borrowed (min KES 199)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>National ID Number *</label>
+                  <input value={nationalId} onChange={(e) => setNationalId(e.target.value)} className={inputCls} placeholder="12345678" />
                 </div>
-              )}
+                <div>
+                  <label className={labelCls}>Date of Birth *</label>
+                  <input type="date" value={dob} onChange={(e) => setDob(e.target.value)} className={inputCls} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Gender *</label>
+                  <select value={gender} onChange={(e) => setGender(e.target.value)} className={inputCls}>
+                    <option value="">Select...</option>
+                    <option>Male</option>
+                    <option>Female</option>
+                    <option>Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={labelCls}>Marital Status</label>
+                  <select value={maritalStatus} onChange={(e) => setMaritalStatus(e.target.value)} className={inputCls}>
+                    <option value="">Select...</option>
+                    <option>Single</option>
+                    <option>Married</option>
+                    <option>Divorced</option>
+                    <option>Widowed</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Residential Address *</label>
+                <input value={address} onChange={(e) => setAddress(e.target.value)} className={inputCls} placeholder="123 Main Street, Estate" />
+              </div>
+              <div>
+                <label className={labelCls}>City / Town *</label>
+                <input value={city} onChange={(e) => setCity(e.target.value)} className={inputCls} placeholder="Nairobi" />
+              </div>
+              <div className="flex justify-between pt-2">
+                <button onClick={() => setStep(0)} className="px-6 py-2 rounded-lg border font-semibold text-sm">Back</button>
+                <button disabled={!validateStep(1)} onClick={() => setStep(2)} className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-40 flex items-center gap-2 text-sm">
+                  Next <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
 
-              <div className="flex justify-between pt-4">
-                <button onClick={() => setStep(0)} className="px-6 py-2 rounded-lg border font-semibold">Back</button>
-                <button disabled={!amount || !term} onClick={() => setStep(2)} className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-40 flex items-center gap-2">
+          {/* Step 2: Financial Details */}
+          {step === 2 && (
+            <div className="space-y-3">
+              <h2 className="font-bold text-lg mb-2">Financial & Occupation Details</h2>
+              <div>
+                <label className={labelCls}>Occupation / Employment Status *</label>
+                <select value={occupation} onChange={(e) => setOccupation(e.target.value)} className={inputCls}>
+                  <option value="">Select...</option>
+                  {OCCUPATIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Employer / Business Name</label>
+                  <input value={employer} onChange={(e) => setEmployer(e.target.value)} className={inputCls} placeholder="Company Ltd" />
+                </div>
+                <div>
+                  <label className={labelCls}>Job Title</label>
+                  <input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} className={inputCls} placeholder="Manager" />
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Monthly Income Range *</label>
+                <select value={incomeRange} onChange={(e) => setIncomeRange(e.target.value)} className={inputCls}>
+                  <option value="">Select...</option>
+                  {INCOME_RANGES.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Number of Dependants *</label>
+                <select value={dependants} onChange={(e) => setDependants(e.target.value)} className={inputCls}>
+                  <option value="">Select...</option>
+                  <option value="0">0 (None)</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5+">5 or more</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Bank Name</label>
+                  <input value={bankName} onChange={(e) => setBankName(e.target.value)} className={inputCls} placeholder="Equity Bank" />
+                </div>
+                <div>
+                  <label className={labelCls}>Bank Account Number</label>
+                  <input value={bankAccount} onChange={(e) => setBankAccount(e.target.value)} className={inputCls} placeholder="1234567890" />
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>M-Pesa Phone Number *</label>
+                <input value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} className={inputCls} placeholder="07XX XXX XXX" />
+              </div>
+              <div className="flex justify-between pt-2">
+                <button onClick={() => setStep(1)} className="px-6 py-2 rounded-lg border font-semibold text-sm">Back</button>
+                <button disabled={!validateStep(2)} onClick={() => setStep(3)} className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-40 flex items-center gap-2 text-sm">
+                  Next <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Guarantor */}
+          {step === 3 && (
+            <div className="space-y-3">
+              <h2 className="font-bold text-lg mb-1">Guarantor Details</h2>
+              <p className="text-xs text-gray-500 mb-3">At least one guarantor is required.</p>
+              <div>
+                <label className={labelCls}>Guarantor Full Name *</label>
+                <input value={gName} onChange={(e) => setGName(e.target.value)} className={inputCls} placeholder="Jane Doe" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Phone Number *</label>
+                  <input value={gPhone} onChange={(e) => setGPhone(e.target.value)} className={inputCls} placeholder="07XX XXX XXX" />
+                </div>
+                <div>
+                  <label className={labelCls}>ID Number *</label>
+                  <input value={gIdNumber} onChange={(e) => setGIdNumber(e.target.value)} className={inputCls} placeholder="12345678" />
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Email Address</label>
+                <input type="email" value={gEmail} onChange={(e) => setGEmail(e.target.value)} className={inputCls} placeholder="jane@email.com" />
+              </div>
+              <div>
+                <label className={labelCls}>Relationship *</label>
+                <select value={gRelation} onChange={(e) => setGRelation(e.target.value)} className={inputCls}>
+                  <option value="">Select...</option>
+                  <option>Spouse</option>
+                  <option>Parent</option>
+                  <option>Sibling</option>
+                  <option>Child</option>
+                  <option>Relative</option>
+                  <option>Friend</option>
+                  <option>Colleague</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Guarantor Occupation *</label>
+                <select value={gOccupation} onChange={(e) => setGOccupation(e.target.value)} className={inputCls}>
+                  <option value="">Select...</option>
+                  {OCCUPATIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Guarantor Income Range *</label>
+                <select value={gIncome} onChange={(e) => setGIncome(e.target.value)} className={inputCls}>
+                  <option value="">Select...</option>
+                  {INCOME_RANGES.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div className="flex justify-between pt-2">
+                <button onClick={() => setStep(2)} className="px-6 py-2 rounded-lg border font-semibold text-sm">Back</button>
+                <button disabled={!validateStep(3)} onClick={() => setStep(4)} className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-40 flex items-center gap-2 text-sm">
                   Review <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
           )}
 
-          {/* Step 2: Review */}
-          {step === 2 && selectedProduct && (
-            <div className="space-y-4">
+          {/* Step 4: Review */}
+          {step === 4 && selectedProduct && (
+            <div className="space-y-3">
               <h2 className="font-bold text-lg mb-2">Review Application</h2>
-              {[
-                ['Product', selectedProduct.name],
-                ['Amount', formatKES(amt)],
-                ['Term', `${term} months`],
-                ['Rate', `${selectedProduct.rate}% p.a.`],
-                ['Monthly Payment', repayment ? formatKES(repayment.monthly) : '—'],
-                ['Total Repayment', repayment ? formatKES(repayment.total) : '—'],
-                ['Processing Fee', formatKES(fee)],
-                ['Activation Fee (pay via M-Pesa)', formatKES(activationFee)],
-                ['Name', user?.name || ''],
-                ['Email', user?.email || ''],
-                ['Phone', user?.phone || ''],
-              ].map(([l, v]) => (
-                <div key={l} className="flex justify-between py-2 border-b last:border-0">
-                  <span className="text-gray-500 text-sm">{l}</span>
-                  <span className="font-medium text-sm">{v}</span>
+
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Loan Details</p>
+                <div className="grid grid-cols-2 gap-1 text-sm">
+                  <span className="text-gray-500">Product:</span><span className="font-medium">{selectedProduct.name}</span>
+                  <span className="text-gray-500">Amount:</span><span className="font-medium">{formatKES(amt)}</span>
+                  <span className="text-gray-500">Term:</span><span className="font-medium">{term} months</span>
+                  <span className="text-gray-500">Activation Fee:</span><span className="font-medium text-mkopa-orange">{formatKES(activationFee)}</span>
                 </div>
-              ))}
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Personal</p>
+                <div className="grid grid-cols-2 gap-1 text-sm">
+                  <span className="text-gray-500">Name:</span><span className="font-medium">{fullName}</span>
+                  <span className="text-gray-500">ID:</span><span className="font-medium">{nationalId}</span>
+                  <span className="text-gray-500">City:</span><span className="font-medium">{city}</span>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Financial</p>
+                <div className="grid grid-cols-2 gap-1 text-sm">
+                  <span className="text-gray-500">Occupation:</span><span className="font-medium">{occupation}</span>
+                  <span className="text-gray-500">Income:</span><span className="font-medium">{incomeRange}</span>
+                  <span className="text-gray-500">Dependants:</span><span className="font-medium">{dependants}</span>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Guarantor</p>
+                <div className="grid grid-cols-2 gap-1 text-sm">
+                  <span className="text-gray-500">Name:</span><span className="font-medium">{gName}</span>
+                  <span className="text-gray-500">Phone:</span><span className="font-medium">{gPhone}</span>
+                  <span className="text-gray-500">Relation:</span><span className="font-medium">{gRelation}</span>
+                </div>
+              </div>
+
               {error && <p className="text-red-500 text-sm">{error}</p>}
               <div className="bg-orange-50 p-3 rounded-lg text-xs text-orange-700">
                 After submitting, you&apos;ll pay the activation fee of <strong>{formatKES(activationFee)}</strong> via M-Pesa STK push.
               </div>
-              <div className="flex justify-between pt-4">
-                <button onClick={() => setStep(1)} className="px-6 py-2 rounded-lg border font-semibold">Back</button>
-                <button disabled={loading} onClick={handleSubmit} className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-40 flex items-center gap-2">
-                  {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting...</> : 'Submit & Pay Activation Fee'}
+              <div className="flex justify-between pt-2">
+                <button onClick={() => setStep(3)} className="px-6 py-2 rounded-lg border font-semibold text-sm">Back</button>
+                <button disabled={loading} onClick={handleSubmit} className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-40 flex items-center gap-2 text-sm">
+                  {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting...</> : 'Submit & Pay Fee'}
                 </button>
               </div>
             </div>

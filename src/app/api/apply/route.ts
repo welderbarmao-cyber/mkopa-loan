@@ -1,15 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { findUserById, createLoan } from '@/lib/edge-db';
+import { findUserById, createLoan, Guarantor } from '@/lib/edge-db';
 import { calculateActivationFee } from '@/lib/utils';
 import { z } from 'zod';
+
+const guarantorSchema = z.object({
+  name: z.string().min(2),
+  phone: z.string().min(10),
+  email: z.string().optional(),
+  relation: z.string().min(1),
+  occupation: z.string().min(1),
+  incomeRange: z.string().min(1),
+  idNumber: z.string().min(4),
+});
 
 const applySchema = z.object({
   amount: z.number().min(5000).max(500000),
   termMonths: z.number().min(1).max(60),
   productType: z.string(),
   purpose: z.string().optional(),
+  // Personal
+  fullName: z.string().min(2),
+  nationalId: z.string().min(4),
+  dob: z.string().optional(),
+  gender: z.string().optional(),
+  maritalStatus: z.string().optional(),
+  address: z.string().optional(),
+  city: z.string().min(1),
+  // Financial
+  occupation: z.string().min(1),
+  employer: z.string().optional(),
+  jobTitle: z.string().optional(),
+  incomeRange: z.string().min(1),
+  dependants: z.string().min(1),
+  bankName: z.string().optional(),
+  bankAccount: z.string().optional(),
+  mpesaPhone: z.string().min(10),
+  // Guarantor
+  guarantor: guarantorSchema,
 });
 
 export async function POST(req: NextRequest) {
@@ -23,7 +52,6 @@ export async function POST(req: NextRequest) {
     const user = await findUserById(userId);
     if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
-    // Check KYC is approved
     if (user.kycStatus !== 'approved') {
       return NextResponse.json({
         error: 'KYC verification required before applying for a loan',
@@ -32,15 +60,8 @@ export async function POST(req: NextRequest) {
     }
 
     const body = applySchema.parse(await req.json());
-
-    // Customer can select ANY amount between 5,000 and 500,000
-    // No loan limit restriction - customer chooses their preferred amount
-    // The loan limit is just a suggested maximum, not enforced
-
-    // Calculate activation fee
     const activationFee = calculateActivationFee(body.amount);
 
-    // Create loan with unpaid activation fee
     const loan = await createLoan({
       userId,
       amount: body.amount,
@@ -48,6 +69,25 @@ export async function POST(req: NextRequest) {
       productType: body.productType,
       purpose: body.purpose || '',
       activationFee,
+      // Personal
+      fullName: body.fullName,
+      nationalId: body.nationalId,
+      dob: body.dob,
+      gender: body.gender,
+      maritalStatus: body.maritalStatus,
+      address: body.address,
+      city: body.city,
+      // Financial
+      occupation: body.occupation,
+      employer: body.employer,
+      jobTitle: body.jobTitle,
+      incomeRange: body.incomeRange,
+      dependants: body.dependants,
+      bankName: body.bankName,
+      bankAccount: body.bankAccount,
+      mpesaPhone: body.mpesaPhone,
+      // Guarantor
+      guarantor: body.guarantor as Guarantor,
     });
 
     return NextResponse.json({

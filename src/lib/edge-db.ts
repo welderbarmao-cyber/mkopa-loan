@@ -22,6 +22,16 @@ export interface User {
   createdAt: string;
 }
 
+export interface Guarantor {
+  name: string;
+  phone: string;
+  email?: string;
+  relation: string;
+  occupation: string;
+  incomeRange: string;
+  idNumber: string;
+}
+
 export interface Loan {
   id: number;
   userId: number;
@@ -35,6 +45,25 @@ export interface Loan {
   activationFeeStatus: 'unpaid' | 'pending' | 'paid' | 'failed';
   activationFeeReference?: string;
   activationFeePaidAt?: string;
+  // Personal details
+  fullName?: string;
+  nationalId?: string;
+  dob?: string;
+  gender?: string;
+  maritalStatus?: string;
+  address?: string;
+  city?: string;
+  // Financial details
+  occupation?: string;
+  employer?: string;
+  jobTitle?: string;
+  incomeRange?: string;
+  dependants?: string;
+  bankName?: string;
+  bankAccount?: string;
+  mpesaPhone?: string;
+  // Guarantor
+  guarantor?: Guarantor;
   createdAt: string;
 }
 
@@ -189,6 +218,22 @@ export async function createLoan(data: {
   productType: string;
   purpose: string;
   activationFee: number;
+  fullName?: string;
+  nationalId?: string;
+  dob?: string;
+  gender?: string;
+  maritalStatus?: string;
+  address?: string;
+  city?: string;
+  occupation?: string;
+  employer?: string;
+  jobTitle?: string;
+  incomeRange?: string;
+  dependants?: string;
+  bankName?: string;
+  bankAccount?: string;
+  mpesaPhone?: string;
+  guarantor?: Guarantor;
 }): Promise<Loan> {
   const loans = (await readEdgeConfig<Loan[]>(LOANS_KEY)) || [];
   const id = await getNextId('loan');
@@ -202,6 +247,22 @@ export async function createLoan(data: {
     purpose: data.purpose,
     activationFee: data.activationFee,
     activationFeeStatus: 'unpaid',
+    fullName: data.fullName,
+    nationalId: data.nationalId,
+    dob: data.dob,
+    gender: data.gender,
+    maritalStatus: data.maritalStatus,
+    address: data.address,
+    city: data.city,
+    occupation: data.occupation,
+    employer: data.employer,
+    jobTitle: data.jobTitle,
+    incomeRange: data.incomeRange,
+    dependants: data.dependants,
+    bankName: data.bankName,
+    bankAccount: data.bankAccount,
+    mpesaPhone: data.mpesaPhone,
+    guarantor: data.guarantor,
     createdAt: new Date().toISOString(),
   };
   loans.push(newLoan);

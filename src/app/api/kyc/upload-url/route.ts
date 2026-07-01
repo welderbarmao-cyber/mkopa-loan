@@ -26,11 +26,15 @@ export async function POST(req: NextRequest) {
     const ext = body.contentType.includes('png') ? 'png' : 'jpg';
     const ghFilename = `${userId}_${body.documentType}_${Date.now()}.${ext}`;
 
-    let storage: 'r2' | 'github' | 'edge-config' = 'edge-config';
+    let storage: 'r2' | 'github' = 'github';
     let storedFileData: string | undefined = body.fileData;
 
+    if (!storedFileData) {
+      return NextResponse.json({ error: 'No file data provided' }, { status: 400 });
+    }
+
     // Try R2 first (no size limit)
-    if (isR2Configured() && storedFileData) {
+    if (isR2Configured()) {
       try {
         const buffer = Buffer.from(storedFileData.split(',')[1] || storedFileData, 'base64');
         await uploadToR2(r2Key, buffer, body.contentType);
@@ -41,23 +45,33 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Try GitHub storage (no size limit, stores files in repo)
+    // Try GitHub storage using Git Blobs API (supports up to 100MB)
     if (storage !== 'r2' && isGitHubConfigured() && storedFileData) {
       try {
         await uploadToGitHub(ghFilename, storedFileData);
         storage = 'github';
         storedFileData = undefined;
-      } catch {
-        storage = 'edge-config';
+      } catch (githubErr) {
+        // GitHub failed too - return error instead of falling back to Edge Config
+        return NextResponse.json({
+          error: 'Failed to upload document. Please try again with a smaller image or try again later.',
+          details: githubErr instanceof Error ? githubErr.message : 'Unknown error',
+        }, { status: 500 });
       }
     }
 
-    // Create KYC upload record
+    if (!isGitHubConfigured() && !isR2Configured()) {
+      return NextResponse.json({
+        error: 'Storage not configured. Please contact support.',
+      }, { status: 500 });
+    }
+
+    // Create KYC upload record - NO fileData stored in Edge Config
     const upload = await createKycUpload({
       userId,
       documentType: body.documentType,
       r2Key: storage === 'github' ? `github/${ghFilename}` : r2Key,
-      fileData: storage === 'edge-config' ? storedFileData : undefined,
+      fileData: undefined, // NEVER store file data in Edge Config
       fileName: storage === 'github' ? ghFilename : body.fileName,
       contentType: body.contentType,
     });
@@ -69,9 +83,7 @@ export async function POST(req: NextRequest) {
       storage,
       message: storage === 'r2'
         ? 'Document uploaded to Cloudflare R2'
-        : storage === 'github'
-        ? 'Document uploaded to secure storage'
-        : 'Document stored securely',
+        : 'Document uploaded to secure storage',
     });
   } catch (e: unknown) {
     if (e instanceof z.ZodError) {

@@ -5,7 +5,7 @@ import { Card, Button, Badge, Input, Avatar, EmptyState, Skeleton } from '@/comp
 import { cn, formatCurrency, formatDate } from '@/lib/cn';
 import {
   FileText, Search, CheckCircle, XCircle,
-  AlertCircle, CreditCard
+  CreditCard, Plus, X
 } from 'lucide-react';
 
 interface LoanRecord {
@@ -26,6 +26,16 @@ interface LoanRecord {
   createdAt: string;
 }
 
+interface UserRecord {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  kycStatus: string;
+  loanLimit: number;
+  role?: string;
+}
+
 const statusConfig: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'default'; color: string }> = {
   pending: { label: 'Pending', variant: 'warning', color: 'bg-amber-500' },
   approved: { label: 'Approved', variant: 'success', color: 'bg-emerald-500' },
@@ -33,14 +43,34 @@ const statusConfig: Record<string, { label: string; variant: 'success' | 'warnin
   disbursed: { label: 'Disbursed', variant: 'info', color: 'bg-blue-500' },
 };
 
+const PRODUCTS = [
+  { id: 'personal', name: 'Personal Loan' },
+  { id: 'business', name: 'Business Loan' },
+  { id: 'emergency', name: 'Emergency Loan' },
+  { id: 'education', name: 'Education Loan' },
+  { id: 'asset', name: 'Asset Financing' },
+];
+
 export default function AdminLoansPage() {
   const [loans, setLoans] = useState<LoanRecord[]>([]);
+  const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'disbursed'>('all');
   const [search, setSearch] = useState('');
   const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const [showAllocate, setShowAllocate] = useState(false);
 
-  useEffect(() => { fetchLoans(); }, []);
+  // Allocate form state
+  const [selectedUser, setSelectedUser] = useState<number | null>(null);
+  const [amount, setAmount] = useState('');
+  const [termMonths, setTermMonths] = useState('12');
+  const [productType, setProductType] = useState('personal');
+  const [purpose, setPurpose] = useState('');
+  const [allocateStatus, setAllocateStatus] = useState<'pending' | 'approved' | 'disbursed'>('approved');
+  const [allocating, setAllocating] = useState(false);
+  const [allocateError, setAllocateError] = useState('');
+
+  useEffect(() => { fetchLoans(); fetchUsers(); }, []);
 
   async function fetchLoans() {
     try {
@@ -49,6 +79,14 @@ export default function AdminLoansPage() {
       setLoans(data.records || []);
     } catch {}
     setLoading(false);
+  }
+
+  async function fetchUsers() {
+    try {
+      const res = await fetch('/api/admin/users');
+      const data = await res.json();
+      setUsers((data.records || []).filter((u: UserRecord) => u.kycStatus === 'approved' && u.role !== 'admin'));
+    } catch {}
   }
 
   async function updateStatus(loanId: number, status: string) {
@@ -69,6 +107,53 @@ export default function AdminLoansPage() {
       alert('Network error');
     }
     setActionLoading(null);
+  }
+
+  async function handleAllocate() {
+    if (!selectedUser) {
+      setAllocateError('Please select a customer');
+      return;
+    }
+    const amt = parseInt(amount);
+    if (!amt || amt < 5000) {
+      setAllocateError('Amount must be at least KES 5,000');
+      return;
+    }
+    setAllocating(true);
+    setAllocateError('');
+    try {
+      const res = await fetch('/api/admin/loans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: selectedUser,
+          amount: amt,
+          termMonths: parseInt(termMonths),
+          productType,
+          purpose,
+          status: allocateStatus,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAllocateError(data.error || 'Failed to allocate loan');
+        setAllocating(false);
+        return;
+      }
+      // Reset form
+      setShowAllocate(false);
+      setSelectedUser(null);
+      setAmount('');
+      setTermMonths('12');
+      setProductType('personal');
+      setPurpose('');
+      setAllocateStatus('approved');
+      await fetchLoans();
+      alert(data.message);
+    } catch {
+      setAllocateError('Network error');
+    }
+    setAllocating(false);
   }
 
   const filtered = loans.filter(l => {
@@ -102,17 +187,22 @@ export default function AdminLoansPage() {
     disbursed: loans.filter(l => l.activationFeeStatus === 'paid').reduce((sum, l) => sum + l.amount, 0),
   };
 
+  const eligibleUsers = users.filter(u => u.kycStatus === 'approved');
+
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Loan Management</h1>
-          <p className="text-sm text-ink-500">Review, approve, and disburse loans</p>
+          <p className="text-sm text-ink-500">Allocate, approve, and manage loans</p>
         </div>
+        <Button variant="primary" size="sm" onClick={() => setShowAllocate(true)}>
+          <Plus className="w-4 h-4" /> Allocate Loan
+        </Button>
       </div>
 
-      {/* Stats - Compact */}
+      {/* Stats */}
       <div className="grid grid-cols-4 gap-3">
         {[
           { label: 'Total Loans', value: stats.total, color: 'from-mkopa-green to-mkopa-dark' },
@@ -128,7 +218,134 @@ export default function AdminLoansPage() {
         ))}
       </div>
 
-      {/* Filters - Compact */}
+      {/* Allocate Loan Modal */}
+      {showAllocate && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowAllocate(false)}>
+          <Card className="max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+            <div className="p-4 border-b flex items-center justify-between">
+              <div>
+                <h2 className="font-bold">Allocate New Loan</h2>
+                <p className="text-xs text-ink-500">Create a loan for a KYC-approved customer</p>
+              </div>
+              <button onClick={() => setShowAllocate(false)} className="p-1.5 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-800">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              {allocateError && (
+                <div className="bg-red-50 text-red-600 text-sm p-2 rounded-lg">{allocateError}</div>
+              )}
+
+              {/* Select Customer */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Customer (KYC Approved)</label>
+                <select
+                  value={selectedUser || ''}
+                  onChange={(e) => setSelectedUser(parseInt(e.target.value))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm h-10"
+                >
+                  <option value="">Select a customer...</option>
+                  {eligibleUsers.map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} - {u.email} (Limit: KES {u.loanLimit?.toLocaleString() || '0'})
+                    </option>
+                  ))}
+                </select>
+                {eligibleUsers.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">No KYC-approved customers available</p>
+                )}
+              </div>
+
+              {/* Amount */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Loan Amount (KES)</label>
+                <Input
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="Minimum: 5,000"
+                  min={5000}
+                  max={500000}
+                />
+              </div>
+
+              {/* Term */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Term (Months)</label>
+                <Input
+                  type="number"
+                  value={termMonths}
+                  onChange={(e) => setTermMonths(e.target.value)}
+                  min={1}
+                  max={60}
+                />
+              </div>
+
+              {/* Product Type */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Loan Product</label>
+                <select
+                  value={productType}
+                  onChange={(e) => setProductType(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm h-10"
+                >
+                  {PRODUCTS.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Purpose */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Purpose (Optional)</label>
+                <Input
+                  type="text"
+                  value={purpose}
+                  onChange={(e) => setPurpose(e.target.value)}
+                  placeholder="Reason for loan"
+                />
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Loan Status</label>
+                <select
+                  value={allocateStatus}
+                  onChange={(e) => setAllocateStatus(e.target.value as 'pending' | 'approved' | 'disbursed')}
+                  className="w-full border rounded-lg px-3 py-2 text-sm h-10"
+                >
+                  <option value="pending">Pending (customer pays activation fee)</option>
+                  <option value="approved">Approved (skip activation fee)</option>
+                  <option value="disbursed">Disbursed (loan fully active)</option>
+                </select>
+              </div>
+
+              {/* Activation Fee Preview */}
+              {amount && parseInt(amount) >= 5000 && (
+                <div className="bg-mkopa-green/5 border border-mkopa-green/20 rounded-lg p-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-ink-500">Activation Fee:</span>
+                    <span className="font-bold text-mkopa-orange">
+                      KES {Math.ceil((parseInt(amount) / 5000) * 199).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <Button
+                variant="primary"
+                className="w-full"
+                onClick={handleAllocate}
+                disabled={allocating || !selectedUser || !amount}
+              >
+                {allocating ? 'Allocating...' : 'Allocate Loan'}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Filters */}
       <Card className="p-3">
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
@@ -160,13 +377,13 @@ export default function AdminLoansPage() {
         </div>
       </Card>
 
-      {/* Loans - Compact */}
+      {/* Loans */}
       {filtered.length === 0 ? (
         <Card>
           <EmptyState
             icon={FileText}
             title="No loans found"
-            description="When customers apply for loans, they will appear here for review."
+            description="Click 'Allocate Loan' to create a new loan for a customer."
           />
         </Card>
       ) : (
@@ -175,6 +392,7 @@ export default function AdminLoansPage() {
             const status = statusConfig[loan.status] || { label: loan.status, variant: 'default' as const, color: 'bg-gray-500' };
             const feePaid = loan.activationFeeStatus === 'paid';
             const canDisburse = loan.status === 'pending' && feePaid;
+            const canApprove = loan.status === 'pending' && !feePaid;
             return (
               <Card key={loan.id} className="overflow-hidden hover:shadow-premium-lg transition-all">
                 <div className={cn('h-1', status.color)} />
@@ -232,40 +450,58 @@ export default function AdminLoansPage() {
                       </div>
 
                       {/* Actions */}
-                      {canDisburse && (
-                        <div className="flex gap-2 w-full">
+                      <div className="flex flex-col gap-1 w-full">
+                        {canApprove && (
                           <Button
                             variant="success"
                             size="sm"
-                            className="flex-1"
+                            className="w-full"
+                            onClick={() => updateStatus(loan.id, 'approved')}
+                            disabled={actionLoading === loan.id}
+                          >
+                            <CheckCircle className="w-3.5 h-3.5" /> Approve (Skip Fee)
+                          </Button>
+                        )}
+                        {canDisburse && (
+                          <Button
+                            variant="success"
+                            size="sm"
+                            className="w-full"
                             onClick={() => updateStatus(loan.id, 'disbursed')}
                             disabled={actionLoading === loan.id}
                           >
                             <CheckCircle className="w-3.5 h-3.5" /> Disburse
                           </Button>
+                        )}
+                        {loan.status === 'pending' && (
                           <Button
                             variant="outline"
                             size="sm"
-                            className="flex-1 text-red-600 border-red-200 hover:bg-red-50"
+                            className="w-full text-red-600 border-red-200 hover:bg-red-50"
                             onClick={() => updateStatus(loan.id, 'rejected')}
                             disabled={actionLoading === loan.id}
                           >
                             <XCircle className="w-3.5 h-3.5" /> Reject
                           </Button>
-                        </div>
-                      )}
-                      {loan.status === 'pending' && !feePaid && (
-                        <div className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/50 rounded-lg p-2 flex items-center gap-2 w-full">
-                          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                          <span>Waiting for fee payment</span>
-                        </div>
-                      )}
-                      {loan.status === 'disbursed' && (
-                        <Badge variant="info"><CreditCard className="w-3 h-3" /> Disbursed</Badge>
-                      )}
-                      {loan.status === 'rejected' && (
-                        <Badge variant="danger"><XCircle className="w-3 h-3" /> Rejected</Badge>
-                      )}
+                        )}
+                        {loan.status === 'approved' && (
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            className="w-full"
+                            onClick={() => updateStatus(loan.id, 'disbursed')}
+                            disabled={actionLoading === loan.id}
+                          >
+                            <CreditCard className="w-3.5 h-3.5" /> Mark Disbursed
+                          </Button>
+                        )}
+                        {loan.status === 'disbursed' && (
+                          <Badge variant="info"><CreditCard className="w-3 h-3" /> Disbursed</Badge>
+                        )}
+                        {loan.status === 'rejected' && (
+                          <Badge variant="danger"><XCircle className="w-3 h-3" /> Rejected</Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

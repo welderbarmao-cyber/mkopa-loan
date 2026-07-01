@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { findUserById, findLoanById, updateLoan } from '@/lib/edge-db';
-import { initiatePayment, normalizePhone, detectNetwork } from '@/lib/xdigitex';
+import { initiatePayment, normalizePhone, detectNetwork, detectCountry } from '@/lib/xdigitex';
 import { z } from 'zod';
 
 const initiateSchema = z.object({
@@ -36,13 +36,13 @@ export async function POST(req: NextRequest) {
 
     const normalizedPhone = normalizePhone(body.phone);
     const network = detectNetwork(body.phone);
+    const country = detectCountry(body.phone);
 
-    // Use 'mobile' gateway (PawaPay) - sends DIRECT STK push to phone
-    // Customer enters M-Pesa PIN on their phone → money deducted automatically
-    // No redirect, no popup, no extra page
+    // Use 'mobile' gateway (PawaPay) - supports all African mobile money networks
+    // Sends direct STK push to the customer's phone
     const payment = await initiatePayment({
       amount: loan.activationFee,
-      currency: 'KES',
+      currency: country.currency,
       gateway: 'mobile',
       phone: normalizedPhone,
       email: user.email,
@@ -53,7 +53,6 @@ export async function POST(req: NextRequest) {
       webhook_url: `https://m-kopa.kesug.qzz.io/api/payment/webhook`,
     });
 
-    // Update loan with payment reference
     await updateLoan(loan.id, {
       activationFeeStatus: 'pending',
       activationFeeReference: payment.reference,
@@ -66,13 +65,15 @@ export async function POST(req: NextRequest) {
       reference: payment.reference,
       gateway: payment.gateway,
       amount: loan.activationFee,
+      currency: country.currency,
       stkPushSent: stkAccepted,
       stkStatus: payment.pawa_status,
       correspondent: payment.correspondent,
       network: network,
+      country: country.country,
       message: stkAccepted
-        ? `M-Pesa prompt sent to ${normalizedPhone}. Enter your M-Pesa PIN on your phone to complete payment.`
-        : `Payment initiated for ${normalizedPhone}. Check your phone for the M-Pesa prompt.`,
+        ? `M-Pesa/Mobile Money prompt sent to ${normalizedPhone}. Enter your PIN on your phone to complete payment.`
+        : `Payment initiated for ${normalizedPhone}. Check your phone for the prompt.`,
     });
   } catch (e: unknown) {
     if (e instanceof z.ZodError) {

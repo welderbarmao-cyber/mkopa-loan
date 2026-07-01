@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, ArrowLeft, Smartphone, CheckCircle, AlertCircle, Bell, Phone } from 'lucide-react';
 import { formatKES } from '@/lib/utils';
-import { detectNetwork } from '@/lib/xdigitex';
+import { detectNetwork, detectCountry } from '@/lib/xdigitex';
 
 function PaymentContent() {
   const { data: session, status } = useSession();
@@ -16,7 +16,8 @@ function PaymentContent() {
 
   const [loan, setLoan] = useState<{ id: number; amount: number; activationFee: number; activationFeeStatus: string } | null>(null);
   const [phone, setPhone] = useState('');
-  const [network, setNetwork] = useState<'safaricom' | 'airtel' | 'telkom' | 'unknown'>('unknown');
+  const [network, setNetwork] = useState<string>('unknown');
+  const [country, setCountry] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
@@ -38,6 +39,7 @@ function PaymentContent() {
   useEffect(() => {
     if (phone) {
       setNetwork(detectNetwork(phone));
+      setCountry(detectCountry(phone).country);
     }
   }, [phone]);
 
@@ -190,7 +192,8 @@ function PaymentContent() {
               />
               {phone && (
                 <p className="text-xs mt-1">
-                  Detected: <span className="font-semibold capitalize text-mkopa-green">{network}</span>
+                  Detected: <span className="font-semibold text-mkopa-green">{network}</span>
+                  {country && <span className="text-gray-400"> · {country}</span>}
                 </p>
               )}
             </div>
@@ -212,12 +215,14 @@ function PaymentContent() {
             <div className="mt-4 p-3 bg-green-50 rounded-lg text-xs text-green-700">
               <p className="font-semibold mb-1">How it works:</p>
               <ol className="list-decimal list-inside space-y-0.5">
-                <li>Enter your M-Pesa phone number</li>
+                <li>Enter your mobile money phone number</li>
                 <li>Click &quot;Get Loan&quot;</li>
-                <li>M-Pesa prompt appears on your phone</li>
-                <li>Enter your M-Pesa PIN</li>
+                <li>Prompt appears on your phone</li>
+                <li>Enter your PIN</li>
                 <li>Money deducted automatically — done!</li>
               </ol>
+              <p className="mt-2 font-semibold">Supported Networks:</p>
+              <p className="mt-0.5">M-Pesa (KE) · Airtel (KE) · MTN (UG, GH, ZM, RW) · Vodacom (TZ) · Orange (CI) · Vodafone (GH) · Airtel (UG, TZ, ZM)</p>
             </div>
           </div>
         ) : (

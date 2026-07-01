@@ -42,18 +42,14 @@ export default function ApplyPage() {
       const data = await res.json();
       if (data.user) {
         setUser(data.user);
-        // Check if user can apply
+        // Only check KYC - no loan limit requirement
         if (data.user.kycStatus !== 'approved') {
           setBlocker({
             type: 'KYC_REQUIRED',
             message: 'You need to complete KYC verification before applying for a loan.',
           });
-        } else if (data.user.loanLimit <= 0) {
-          setBlocker({
-            type: 'NO_LOAN_LIMIT',
-            message: 'Admin has not assigned a loan limit to your account yet. Please wait for admin to assign your limit after KYC approval.',
-          });
         }
+        // No loan limit check - customer can choose any amount
       }
     } catch {}
   }
@@ -131,12 +127,6 @@ export default function ApplyPage() {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <h1 className="text-xl font-bold">Apply for a Loan</h1>
-          {user && (
-            <div className="ml-auto text-right">
-              <p className="text-xs text-gray-500">Loan Limit</p>
-              <p className="font-bold text-mkopa-green">{formatKES(user.loanLimit)}</p>
-            </div>
-          )}
         </div>
 
         {/* Steps */}
@@ -173,17 +163,22 @@ export default function ApplyPage() {
           )}
 
           {/* Step 1: Details */}
-          {step === 1 && selectedProduct && user && (
+          {step === 1 && selectedProduct && (
             <div className="space-y-4">
               <h2 className="font-bold text-lg mb-2">Loan Details</h2>
               <div className="bg-green-50 p-3 rounded-lg text-sm text-gray-600">{selectedProduct.name} · {selectedProduct.rate}% p.a.</div>
 
               <div>
                 <label className="block text-sm font-medium mb-1">Loan Amount (KES)</label>
-                <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} min={selectedProduct.min} max={Math.min(selectedProduct.max, user.loanLimit)} className="w-full border rounded-lg px-4 py-2.5 text-sm" />
+                <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} min={selectedProduct.min} max={selectedProduct.max} className="w-full border rounded-lg px-4 py-2.5 text-sm" />
                 <p className="text-xs text-gray-400 mt-1">
-                  Min: {formatKES(selectedProduct.min)} · Max: {formatKES(Math.min(selectedProduct.max, user.loanLimit))} (your limit)
+                  Min: {formatKES(selectedProduct.min)} · Max: {formatKES(selectedProduct.max)}
                 </p>
+                {user && user.loanLimit > 0 && (
+                  <p className="text-xs text-mkopa-green mt-1">
+                    Suggested limit: {formatKES(user.loanLimit)} (you can choose any amount up to {formatKES(selectedProduct.max)})
+                  </p>
+                )}
               </div>
 
               <div>
@@ -230,7 +225,7 @@ export default function ApplyPage() {
                 ['Monthly Payment', repayment ? formatKES(repayment.monthly) : '—'],
                 ['Total Repayment', repayment ? formatKES(repayment.total) : '—'],
                 ['Processing Fee', formatKES(fee)],
-                ['Activation Fee (pay via STK)', formatKES(activationFee)],
+                ['Activation Fee (pay via M-Pesa)', formatKES(activationFee)],
                 ['Name', user?.name || ''],
                 ['Email', user?.email || ''],
                 ['Phone', user?.phone || ''],
@@ -242,7 +237,7 @@ export default function ApplyPage() {
               ))}
               {error && <p className="text-red-500 text-sm">{error}</p>}
               <div className="bg-orange-50 p-3 rounded-lg text-xs text-orange-700">
-                After submitting, you&apos;ll be redirected to pay the activation fee of <strong>{formatKES(activationFee)}</strong> via M-Pesa or Airtel STK push.
+                After submitting, you&apos;ll pay the activation fee of <strong>{formatKES(activationFee)}</strong> via M-Pesa STK push.
               </div>
               <div className="flex justify-between pt-4">
                 <button onClick={() => setStep(1)} className="px-6 py-2 rounded-lg border font-semibold">Back</button>

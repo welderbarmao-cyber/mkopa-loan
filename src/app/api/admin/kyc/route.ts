@@ -94,12 +94,16 @@ export async function PATCH(req: NextRequest) {
           reviewedAt: new Date().toISOString(),
         });
       }
+      // Auto-assign a random loan limit (between 10,000 and 200,000)
+      const randomLimit = Math.floor(Math.random() * 19 + 10) * 10000; // 10,000 - 200,000
       await updateUser(user.email, {
         kycStatus: 'approved',
         kycReviewedAt: new Date().toISOString(),
         kycRejectionReason: undefined,
+        loanLimit: randomLimit,
+        loanLimitAssignedAt: new Date().toISOString(),
       });
-      return NextResponse.json({ success: true, message: 'KYC approved successfully' });
+      return NextResponse.json({ success: true, message: `KYC approved. Loan limit of KES ${randomLimit.toLocaleString()} assigned.` });
     } else {
       // Reject
       const userKyc = await getAllKyc();

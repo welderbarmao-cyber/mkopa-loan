@@ -31,23 +31,11 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Check loan limit is assigned
-    if (user.loanLimit <= 0) {
-      return NextResponse.json({
-        error: 'Admin has not assigned a loan limit to your account yet',
-        code: 'NO_LOAN_LIMIT',
-      }, { status: 400 });
-    }
-
     const body = applySchema.parse(await req.json());
 
-    // Check amount is within limit
-    if (body.amount > user.loanLimit) {
-      return NextResponse.json({
-        error: `Amount exceeds your loan limit of KES ${user.loanLimit.toLocaleString()}`,
-        code: 'EXCEEDS_LIMIT',
-      }, { status: 400 });
-    }
+    // Customer can select ANY amount between 5,000 and 500,000
+    // No loan limit restriction - customer chooses their preferred amount
+    // The loan limit is just a suggested maximum, not enforced
 
     // Calculate activation fee
     const activationFee = calculateActivationFee(body.amount);

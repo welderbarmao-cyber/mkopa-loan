@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { findUserById, findLoanById, updateLoan } from '@/lib/edge-db';
-import { initiatePayment, normalizePhone } from '@/lib/xdigitex';
+import { initiatePayment, normalizePhone, detectNetwork } from '@/lib/xdigitex';
 import { z } from 'zod';
 
 const initiateSchema = z.object({
@@ -35,14 +35,15 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
     const normalizedPhone = normalizePhone(body.phone);
+    const network = detectNetwork(body.phone);
 
-    // Use safaricom gateway (Pesapal) - opens a payment checkout page ON SCREEN
-    // The checkout page shows a form where customer enters phone + gets STK push
-    // This displays OVER the current page as a popup window
+    // Use 'mobile' gateway (PawaPay) - sends DIRECT STK push to phone
+    // Customer enters M-Pesa PIN on their phone → money deducted automatically
+    // No redirect, no popup, no extra page
     const payment = await initiatePayment({
       amount: loan.activationFee,
       currency: 'KES',
-      gateway: 'safaricom',
+      gateway: 'mobile',
       phone: normalizedPhone,
       email: user.email,
       first_name: user.name.split(' ')[0],
@@ -58,15 +59,20 @@ export async function POST(req: NextRequest) {
       activationFeeReference: payment.reference,
     });
 
+    const stkAccepted = payment.pawa_status === 'ACCEPTED' || payment.pawa_status === 'PENDING';
+
     return NextResponse.json({
       success: true,
       reference: payment.reference,
       gateway: payment.gateway,
       amount: loan.activationFee,
-      // redirect_url opens a payment checkout page ON SCREEN
-      redirect_url: payment.redirect_url,
-      order_tracking_id: payment.order_tracking_id,
-      message: 'Payment checkout opened. Complete payment on the screen.',
+      stkPushSent: stkAccepted,
+      stkStatus: payment.pawa_status,
+      correspondent: payment.correspondent,
+      network: network,
+      message: stkAccepted
+        ? `M-Pesa prompt sent to ${normalizedPhone}. Enter your M-Pesa PIN on your phone to complete payment.`
+        : `Payment initiated for ${normalizedPhone}. Check your phone for the M-Pesa prompt.`,
     });
   } catch (e: unknown) {
     if (e instanceof z.ZodError) {

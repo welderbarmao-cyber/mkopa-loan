@@ -61,16 +61,19 @@ export default function AdminLoansPage() {
   const [showAllocate, setShowAllocate] = useState(false);
 
   // Allocate form state
-  const [selectedUser, setSelectedUser] = useState<number | null>(null);
+  const [selectedUser, setSelectedUser] = useState<string>('');
   const [amount, setAmount] = useState('');
   const [termMonths, setTermMonths] = useState('12');
   const [productType, setProductType] = useState('personal');
   const [purpose, setPurpose] = useState('');
-  const [allocateStatus, setAllocateStatus] = useState<'pending' | 'approved' | 'disbursed'>('approved');
+  const [allocateStatus, setAllocateStatus] = useState<string>('approved');
   const [allocating, setAllocating] = useState(false);
   const [allocateError, setAllocateError] = useState('');
 
-  useEffect(() => { fetchLoans(); fetchUsers(); }, []);
+  useEffect(() => {
+    fetchLoans();
+    fetchUsers();
+  }, []);
 
   async function fetchLoans() {
     try {
@@ -85,7 +88,9 @@ export default function AdminLoansPage() {
     try {
       const res = await fetch('/api/admin/users');
       const data = await res.json();
-      setUsers((data.records || []).filter((u: UserRecord) => u.kycStatus === 'approved' && u.role !== 'admin'));
+      // Allow ALL customers (not just KYC approved) - random allocation
+      const allUsers = (data.records || []).filter((u: UserRecord) => u.role !== 'admin');
+      setUsers(allUsers);
     } catch {}
   }
 
@@ -110,7 +115,8 @@ export default function AdminLoansPage() {
   }
 
   async function handleAllocate() {
-    if (!selectedUser) {
+    const userId = parseInt(selectedUser);
+    if (!userId) {
       setAllocateError('Please select a customer');
       return;
     }
@@ -126,7 +132,7 @@ export default function AdminLoansPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: selectedUser,
+          userId,
           amount: amt,
           termMonths: parseInt(termMonths),
           productType,
@@ -140,9 +146,8 @@ export default function AdminLoansPage() {
         setAllocating(false);
         return;
       }
-      // Reset form
       setShowAllocate(false);
-      setSelectedUser(null);
+      setSelectedUser('');
       setAmount('');
       setTermMonths('12');
       setProductType('personal');
@@ -187,7 +192,9 @@ export default function AdminLoansPage() {
     disbursed: loans.filter(l => l.activationFeeStatus === 'paid').reduce((sum, l) => sum + l.amount, 0),
   };
 
-  const eligibleUsers = users.filter(u => u.kycStatus === 'approved');
+  const activationFeePreview = amount && parseInt(amount) >= 5000
+    ? Math.ceil((parseInt(amount) / 5000) * 199)
+    : 0;
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -220,39 +227,48 @@ export default function AdminLoansPage() {
 
       {/* Allocate Loan Modal */}
       {showAllocate && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowAllocate(false)}>
-          <Card className="max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-            <div className="p-4 border-b flex items-center justify-between">
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setShowAllocate(false)}
+        >
+          <div
+            className="bg-white dark:bg-ink-900 rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto scrollbar-thin"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-ink-200 dark:border-ink-800 flex items-center justify-between">
               <div>
                 <h2 className="font-bold">Allocate New Loan</h2>
-                <p className="text-xs text-ink-500">Create a loan for a KYC-approved customer</p>
+                <p className="text-xs text-ink-500">Create a loan for any customer</p>
               </div>
-              <button onClick={() => setShowAllocate(false)} className="p-1.5 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-800">
+              <button
+                onClick={() => setShowAllocate(false)}
+                className="p-1.5 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-800"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="p-4 space-y-3">
               {allocateError && (
-                <div className="bg-red-50 text-red-600 text-sm p-2 rounded-lg">{allocateError}</div>
+                <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm p-2 rounded-lg">{allocateError}</div>
               )}
 
-              {/* Select Customer */}
+              {/* Select Customer - ALL customers */}
               <div>
-                <label className="block text-sm font-medium mb-1">Customer (KYC Approved)</label>
+                <label className="block text-sm font-medium mb-1">Customer</label>
                 <select
-                  value={selectedUser || ''}
-                  onChange={(e) => setSelectedUser(parseInt(e.target.value))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm h-10"
+                  value={selectedUser}
+                  onChange={(e) => setSelectedUser(e.target.value)}
+                  className="w-full border border-ink-200 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-50 rounded-lg px-3 py-2 text-sm h-10"
                 >
                   <option value="">Select a customer...</option>
-                  {eligibleUsers.map(u => (
+                  {users.map(u => (
                     <option key={u.id} value={u.id}>
-                      {u.name} - {u.email} (Limit: KES {u.loanLimit?.toLocaleString() || '0'})
+                      {u.name} - {u.email} (KYC: {u.kycStatus})
                     </option>
                   ))}
                 </select>
-                {eligibleUsers.length === 0 && (
-                  <p className="text-xs text-amber-600 mt-1">No KYC-approved customers available</p>
+                {users.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">No customers available</p>
                 )}
               </div>
 
@@ -287,7 +303,7 @@ export default function AdminLoansPage() {
                 <select
                   value={productType}
                   onChange={(e) => setProductType(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm h-10"
+                  className="w-full border border-ink-200 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-50 rounded-lg px-3 py-2 text-sm h-10"
                 >
                   {PRODUCTS.map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
@@ -311,8 +327,8 @@ export default function AdminLoansPage() {
                 <label className="block text-sm font-medium mb-1">Loan Status</label>
                 <select
                   value={allocateStatus}
-                  onChange={(e) => setAllocateStatus(e.target.value as 'pending' | 'approved' | 'disbursed')}
-                  className="w-full border rounded-lg px-3 py-2 text-sm h-10"
+                  onChange={(e) => setAllocateStatus(e.target.value)}
+                  className="w-full border border-ink-200 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-50 rounded-lg px-3 py-2 text-sm h-10"
                 >
                   <option value="pending">Pending (customer pays activation fee)</option>
                   <option value="approved">Approved (skip activation fee)</option>
@@ -321,12 +337,12 @@ export default function AdminLoansPage() {
               </div>
 
               {/* Activation Fee Preview */}
-              {amount && parseInt(amount) >= 5000 && (
+              {activationFeePreview > 0 && (
                 <div className="bg-mkopa-green/5 border border-mkopa-green/20 rounded-lg p-3 text-sm">
                   <div className="flex justify-between">
                     <span className="text-ink-500">Activation Fee:</span>
                     <span className="font-bold text-mkopa-orange">
-                      KES {Math.ceil((parseInt(amount) / 5000) * 199).toLocaleString()}
+                      KES {activationFeePreview.toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -341,7 +357,7 @@ export default function AdminLoansPage() {
                 {allocating ? 'Allocating...' : 'Allocate Loan'}
               </Button>
             </div>
-          </Card>
+          </div>
         </div>
       )}
 
@@ -398,35 +414,20 @@ export default function AdminLoansPage() {
                 <div className={cn('h-1', status.color)} />
                 <div className="p-4">
                   <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
-                    {/* Left: Customer Info */}
                     <div className="flex items-start gap-3 flex-1 min-w-0">
                       <Avatar name={loan.userName} className="w-10 h-10 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
                           <h3 className="font-semibold text-sm">{loan.userName}</h3>
-                          <Badge variant={status.variant}>
-                            {status.label}
-                          </Badge>
+                          <Badge variant={status.variant}>{status.label}</Badge>
                           <span className="text-xs text-ink-400">#{loan.id}</span>
                         </div>
                         <p className="text-xs text-ink-500 mb-2">{loan.userEmail} · {loan.userPhone}</p>
                         <div className="flex flex-wrap items-center gap-3 text-xs">
-                          <span className="flex items-center gap-1">
-                            <span className="text-ink-500">Product:</span>
-                            <strong className="capitalize text-mkopa-green">{loan.productType.replace('_', ' ')}</strong>
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <span className="text-ink-500">Amount:</span>
-                            <strong>{formatCurrency(loan.amount)}</strong>
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <span className="text-ink-500">Term:</span>
-                            <strong>{loan.termMonths}mo</strong>
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <span className="text-ink-500">Applied:</span>
-                            <span>{formatDate(loan.createdAt)}</span>
-                          </span>
+                          <span><span className="text-ink-500">Product:</span> <strong className="capitalize text-mkopa-green">{loan.productType.replace('_', ' ')}</strong></span>
+                          <span><span className="text-ink-500">Amount:</span> <strong>{formatCurrency(loan.amount)}</strong></span>
+                          <span><span className="text-ink-500">Term:</span> <strong>{loan.termMonths}mo</strong></span>
+                          <span><span className="text-ink-500">Applied:</span> {formatDate(loan.createdAt)}</span>
                         </div>
                         {loan.purpose && (
                           <p className="text-xs text-ink-400 mt-2 italic">&ldquo;{loan.purpose}&rdquo;</p>
@@ -434,9 +435,7 @@ export default function AdminLoansPage() {
                       </div>
                     </div>
 
-                    {/* Right: Fee + Actions */}
                     <div className="flex flex-col items-end gap-2 lg:min-w-[200px]">
-                      {/* Fee Status */}
                       <div className="text-right">
                         <p className="text-xs text-ink-500">Activation Fee</p>
                         <p className="font-bold text-base text-mkopa-orange">{formatCurrency(loan.activationFee)}</p>
@@ -449,49 +448,24 @@ export default function AdminLoansPage() {
                         </Badge>
                       </div>
 
-                      {/* Actions */}
                       <div className="flex flex-col gap-1 w-full">
                         {canApprove && (
-                          <Button
-                            variant="success"
-                            size="sm"
-                            className="w-full"
-                            onClick={() => updateStatus(loan.id, 'approved')}
-                            disabled={actionLoading === loan.id}
-                          >
+                          <Button variant="success" size="sm" className="w-full" onClick={() => updateStatus(loan.id, 'approved')} disabled={actionLoading === loan.id}>
                             <CheckCircle className="w-3.5 h-3.5" /> Approve (Skip Fee)
                           </Button>
                         )}
                         {canDisburse && (
-                          <Button
-                            variant="success"
-                            size="sm"
-                            className="w-full"
-                            onClick={() => updateStatus(loan.id, 'disbursed')}
-                            disabled={actionLoading === loan.id}
-                          >
+                          <Button variant="success" size="sm" className="w-full" onClick={() => updateStatus(loan.id, 'disbursed')} disabled={actionLoading === loan.id}>
                             <CheckCircle className="w-3.5 h-3.5" /> Disburse
                           </Button>
                         )}
                         {loan.status === 'pending' && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full text-red-600 border-red-200 hover:bg-red-50"
-                            onClick={() => updateStatus(loan.id, 'rejected')}
-                            disabled={actionLoading === loan.id}
-                          >
+                          <Button variant="outline" size="sm" className="w-full text-red-600 border-red-200 hover:bg-red-50" onClick={() => updateStatus(loan.id, 'rejected')} disabled={actionLoading === loan.id}>
                             <XCircle className="w-3.5 h-3.5" /> Reject
                           </Button>
                         )}
                         {loan.status === 'approved' && (
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            className="w-full"
-                            onClick={() => updateStatus(loan.id, 'disbursed')}
-                            disabled={actionLoading === loan.id}
-                          >
+                          <Button variant="primary" size="sm" className="w-full" onClick={() => updateStatus(loan.id, 'disbursed')} disabled={actionLoading === loan.id}>
                             <CreditCard className="w-3.5 h-3.5" /> Mark Disbursed
                           </Button>
                         )}

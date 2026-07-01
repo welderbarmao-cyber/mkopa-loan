@@ -80,10 +80,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Check KYC is approved
-    if (user.kycStatus !== 'approved') {
-      return NextResponse.json({ error: 'User KYC must be approved first' }, { status: 400 });
-    }
+    // Admin can allocate to ANY user (random allocation - no KYC requirement)
 
     // Calculate activation fee
     const activationFee = calculateActivationFee(body.amount);

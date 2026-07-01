@@ -57,8 +57,8 @@ const allocateSchema = z.object({
   termMonths: z.number().min(1).max(60),
   productType: z.string(),
   purpose: z.string().optional(),
-  // Admin can directly set status (e.g., 'approved' to skip activation fee)
-  status: z.enum(['pending', 'approved', 'disbursed']).default('pending'),
+  // Admin sets status - pending means customer must pay activation fee
+  status: z.enum(['pending', 'disbursed']).default('pending'),
 });
 
 export async function POST(req: NextRequest) {
@@ -95,12 +95,12 @@ export async function POST(req: NextRequest) {
       activationFee,
     });
 
-    // If admin sets status directly (e.g., approved/disbursed), update it
-    if (body.status !== 'pending') {
+    // If admin sets status to disbursed, mark fee as paid
+    if (body.status === 'disbursed') {
       await updateLoan(loan.id, {
-        status: body.status,
-        activationFeeStatus: body.status === 'disbursed' ? 'paid' : 'unpaid',
-        activationFeePaidAt: body.status === 'disbursed' ? new Date().toISOString() : undefined,
+        status: 'disbursed',
+        activationFeeStatus: 'paid',
+        activationFeePaidAt: new Date().toISOString(),
       });
     }
 

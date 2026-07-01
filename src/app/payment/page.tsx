@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, ArrowLeft, Smartphone, CheckCircle, AlertCircle, Bell, Phone } from 'lucide-react';
+import { Loader2, ArrowLeft, Smartphone, CheckCircle, AlertCircle, Shield } from 'lucide-react';
 import { formatKES } from '@/lib/utils';
 import { detectNetwork } from '@/lib/xdigitex';
 
@@ -18,9 +18,9 @@ function PaymentContent() {
   const [phone, setPhone] = useState('');
   const [network, setNetwork] = useState<'safaricom' | 'airtel' | 'telkom' | 'unknown'>('unknown');
   const [loading, setLoading] = useState(true);
-  const [initiating, setInitiating] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
-  const [stkSent, setStkSent] = useState(false);
+  const [checkoutOpened, setCheckoutOpened] = useState(false);
   const [reference, setReference] = useState('');
 
   useEffect(() => {
@@ -41,9 +41,9 @@ function PaymentContent() {
     }
   }, [phone]);
 
-  // Auto-poll for payment status when STK is sent
+  // Auto-poll for payment status when checkout is opened
   useEffect(() => {
-    if (!stkSent || !reference) return;
+    if (!checkoutOpened || !reference) return;
 
     const pollInterval = setInterval(async () => {
       try {
@@ -54,14 +54,14 @@ function PaymentContent() {
           router.push('/dashboard');
         } else if (data.status === 'failed') {
           clearInterval(pollInterval);
-          setError('Payment failed or timed out. Please try again.');
-          setStkSent(false);
+          setError('Payment failed or was cancelled. Please try again.');
+          setCheckoutOpened(false);
         }
       } catch {}
     }, 3000);
 
     return () => clearInterval(pollInterval);
-  }, [stkSent, reference, loanId, router]);
+  }, [checkoutOpened, reference, loanId, router]);
 
   async function fetchLoanDetails() {
     try {
@@ -82,17 +82,13 @@ function PaymentContent() {
     setLoading(false);
   }
 
-  async function handlePay() {
+  async function handleGetLoan() {
     if (!phone || phone.length < 10) {
       setError('Please enter a valid phone number');
       return;
     }
-    if (network === 'unknown' || network === 'telkom') {
-      setError('Please enter a valid Safaricom or Airtel phone number');
-      return;
-    }
 
-    setInitiating(true);
+    setProcessing(true);
     setError('');
     try {
       const res = await fetch('/api/payment/initiate', {
@@ -102,18 +98,34 @@ function PaymentContent() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Payment initiation failed');
-        setInitiating(false);
+        setError(data.error || 'Failed to initiate payment');
+        setProcessing(false);
         return;
       }
 
-      // STK push sent - show "check your phone" message
-      setReference(data.reference);
-      setStkSent(true);
+      // Open the payment checkout as a POPUP WINDOW that displays OVER the current page
+      if (data.redirect_url) {
+        setReference(data.reference);
+        setCheckoutOpened(true);
+
+        // Open popup - this displays OVER the current page/app
+        const popup = window.open(
+          data.redirect_url,
+          'paymentCheckout',
+          'width=500,height=700,scrollbars=yes,resizable=yes,toolbar=no,menubar=no,location=no,status=no'
+        );
+
+        if (popup) {
+          popup.focus();
+        } else {
+          // If popup blocked, redirect in same tab
+          window.location.href = data.redirect_url;
+        }
+      }
     } catch {
       setError('Network error. Please try again.');
     }
-    setInitiating(false);
+    setProcessing(false);
   }
 
   if (status === 'loading' || !session || loading) {
@@ -144,7 +156,7 @@ function PaymentContent() {
         <div className="text-center max-w-md">
           <CheckCircle className="w-16 h-16 text-mkopa-green mx-auto mb-4" />
           <h1 className="text-2xl font-bold mb-2">Payment Complete!</h1>
-          <p className="text-gray-500 mb-6">Your activation fee has been paid. Your loan is now approved.</p>
+          <p className="text-gray-500 mb-6">Your loan is now active.</p>
           <Link href="/dashboard" className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold inline-block">
             Go to Dashboard
           </Link>
@@ -160,7 +172,7 @@ function PaymentContent() {
           <Link href="/dashboard" className="p-2 hover:bg-gray-200 rounded-lg">
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <h1 className="text-xl font-bold">Pay Activation Fee</h1>
+          <h1 className="text-xl font-bold">Get Loan</h1>
         </div>
 
         {/* Payment Summary */}
@@ -178,9 +190,9 @@ function PaymentContent() {
         </div>
 
         {/* Payment Form */}
-        {!stkSent ? (
+        {!checkoutOpened ? (
           <div className="bg-white rounded-xl shadow-sm p-5">
-            <h2 className="font-bold mb-3">M-Pesa STK Push</h2>
+            <h2 className="font-bold mb-3">Complete Payment</h2>
 
             <div className="mb-4">
               <label className="block text-sm font-medium mb-1">Phone Number</label>
@@ -195,93 +207,64 @@ function PaymentContent() {
               {phone && (
                 <p className="text-xs mt-1">
                   Detected: <span className="font-semibold capitalize text-mkopa-green">{network}</span>
-                  {(network === 'telkom' || network === 'unknown') && (
-                    <span className="text-red-500"> (Safaricom or Airtel only)</span>
-                  )}
                 </p>
               )}
             </div>
 
             <button
-              onClick={handlePay}
-              disabled={initiating || !phone || network === 'unknown' || network === 'telkom'}
+              onClick={handleGetLoan}
+              disabled={processing || !phone || phone.length < 10}
               className="w-full gradient-mkopa text-white py-3 rounded-lg font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
             >
-              {initiating ? (
-                <><Loader2 className="w-5 h-5 animate-spin" /> Sending STK Push...</>
+              {processing ? (
+                <><Loader2 className="w-5 h-5 animate-spin" /> Opening Payment...</>
               ) : (
-                <><Smartphone className="w-5 h-5" /> Send STK Push to {phone || 'Phone'}</>
+                <><Smartphone className="w-5 h-5" /> Get Loan</>
               )}
             </button>
 
             {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
 
             <div className="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
-              <p className="font-semibold mb-1">How STK Push works:</p>
-              <ol className="list-decimal list-inside space-y-0.5">
-                <li>Enter your M-Pesa phone number</li>
-                <li>Click &quot;Send STK Push&quot;</li>
-                <li>An M-Pesa prompt appears ON YOUR PHONE</li>
-                <li>Enter your M-Pesa PIN on your phone</li>
-                <li>Payment completes automatically</li>
-              </ol>
+              <div className="flex items-center gap-2 mb-1">
+                <Shield className="w-4 h-4" />
+                <p className="font-semibold">Secure Payment</p>
+              </div>
+              <p>Click &quot;Get Loan&quot; and a secure payment window will pop up on your screen. Enter your phone number and M-Pesa/Airtel PIN to complete payment. The prompt will appear on your phone.</p>
             </div>
           </div>
         ) : (
-          /* STK Push Sent - Check Your Phone */
+          /* Checkout popup opened - show waiting status */
           <div className="bg-white rounded-xl shadow-sm p-6 text-center">
-            {/* Animated phone icon */}
-            <div className="relative w-20 h-20 mx-auto mb-4">
-              <div className="absolute inset-0 bg-mkopa-green/20 rounded-full animate-ping" />
-              <div className="relative w-20 h-20 bg-mkopa-green rounded-full flex items-center justify-center">
-                <Smartphone className="w-10 h-10 text-white" />
-              </div>
-              {/* Notification badge */}
-              <div className="absolute -top-1 -right-1 w-6 h-6 bg-mkopa-orange rounded-full flex items-center justify-center animate-bounce">
-                <Bell className="w-3.5 h-3.5 text-white" />
-              </div>
+            <div className="w-16 h-16 bg-mkopa-green/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Smartphone className="w-8 h-8 text-mkopa-green animate-pulse" />
             </div>
-
-            <h2 className="font-bold text-lg mb-2">CHECK YOUR PHONE!</h2>
-            <p className="text-gray-700 text-sm mb-2 font-medium">
-              An M-Pesa payment prompt has been sent to:
+            <h2 className="font-bold text-lg mb-2">Complete Payment on Popup</h2>
+            <p className="text-gray-500 text-sm mb-2">
+              A payment window has opened on your screen. Complete the payment there.
             </p>
-            <p className="text-xl font-bold text-mkopa-green mb-3 flex items-center justify-center gap-1">
-              <Phone className="w-4 h-4" /> {phone}
+            <p className="text-xs text-gray-400 mb-4">
+              Enter your phone number on the popup, then check your phone for the M-Pesa/Airtel PIN prompt.
             </p>
-            <p className="text-gray-500 text-xs mb-4">
-              Enter your M-Pesa PIN on your phone to complete payment of <strong>{formatKES(loan.activationFee)}</strong>
-            </p>
-
             {reference && (
               <div className="bg-gray-50 rounded-lg p-2 mb-4">
                 <p className="text-xs text-gray-500">Reference</p>
                 <p className="font-mono text-sm font-semibold">{reference}</p>
               </div>
             )}
-
-            {/* Auto-polling indicator */}
             <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-4">
               <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Waiting for payment confirmation...</span>
+              <span>Waiting for payment...</span>
             </div>
-
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
-              <p className="text-xs text-yellow-700">
-                <strong>⏱️ Important:</strong> The M-Pesa prompt will appear on your phone within 30 seconds. 
-                If you don&apos;t see it, check your SMS or dial <strong>*150#</strong> to check pending payments.
-              </p>
-            </div>
-
             <div className="flex gap-2">
               <Link
                 href={`/payment/status?reference=${reference}&loanId=${loanId}`}
-                className="flex-1 gradient-mkopa text-white py-2 rounded-lg font-semibold text-sm"
+                className="flex-1 gradient-mkopa text-white py-2 rounded-lg font-semibold text-sm text-center"
               >
                 Check Status
               </Link>
               <button
-                onClick={() => { setStkSent(false); setReference(''); }}
+                onClick={() => setCheckoutOpened(false)}
                 className="px-4 py-2 border rounded-lg font-semibold text-sm"
               >
                 Cancel

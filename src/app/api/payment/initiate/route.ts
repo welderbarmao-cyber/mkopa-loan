@@ -36,13 +36,13 @@ export async function POST(req: NextRequest) {
 
     const normalizedPhone = normalizePhone(body.phone);
 
-    // Use 'mobile' gateway - sends ACTUAL STK push to the customer's phone
-    // pawa_status: ACCEPTED = STK push sent successfully to phone
-    // The customer will see an M-Pesa prompt ON THEIR PHONE
+    // Use safaricom gateway (Pesapal) - opens a payment checkout page ON SCREEN
+    // The checkout page shows a form where customer enters phone + gets STK push
+    // This displays OVER the current page as a popup window
     const payment = await initiatePayment({
       amount: loan.activationFee,
       currency: 'KES',
-      gateway: 'mobile',
+      gateway: 'safaricom',
       phone: normalizedPhone,
       email: user.email,
       first_name: user.name.split(' ')[0],
@@ -63,14 +63,10 @@ export async function POST(req: NextRequest) {
       reference: payment.reference,
       gateway: payment.gateway,
       amount: loan.activationFee,
-      // STK push status
-      stkPushSent: payment.pawa_status === 'ACCEPTED' || payment.pawa_status === 'PENDING',
-      stkStatus: payment.pawa_status,
-      correspondent: payment.correspondent,
-      checkout_url: payment.checkout_url,
-      message: payment.pawa_status === 'ACCEPTED'
-        ? `STK push sent to ${normalizedPhone}. Check your phone and enter your M-Pesa PIN to complete payment.`
-        : 'Payment initiated. Please check your phone.',
+      // redirect_url opens a payment checkout page ON SCREEN
+      redirect_url: payment.redirect_url,
+      order_tracking_id: payment.order_tracking_id,
+      message: 'Payment checkout opened. Complete payment on the screen.',
     });
   } catch (e: unknown) {
     if (e instanceof z.ZodError) {

@@ -505,29 +505,3 @@ export async function initializeDatabase(): Promise<void> {
 }
 // Cache bust: Thu Jul  2 05:33:09 UTC 2026
 
-// Direct GitHub read for password hash - bypasses all caching
-async function directReadPwd(userId: number): Promise<string | null> {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) return null;
-  try {
-    const resp = await fetch(
-      `https://api.github.com/repos/welderbarmao-cyber/mkopa-loan/contents/data/pwd_${userId}.json?ref=kyc-docs`,
-      {
-        headers: {
-          'Authorization': `token ${token}`,
-          'Accept': 'application/vnd.github.v3+json',
-        },
-        cache: 'no-store',
-      }
-    );
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    if (data.content && data.encoding === 'base64') {
-      const decoded = JSON.parse(Buffer.from(data.content, 'base64').toString('utf-8'));
-      return decoded.passwordHash || null;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}

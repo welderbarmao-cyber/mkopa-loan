@@ -1,29 +1,45 @@
 // GitHub-based data storage - replaces Edge Config writes
+// Uses GitHub Contents API for both reads AND writes (no CDN caching issues)
 // Edge Config free plan: 250 writes/month (exhausted)
-// GitHub API: 5000 writes/hour (practically unlimited)
+// GitHub API: 5000 req/hour (practically unlimited)
 
 const GITHUB_API = 'https://api.github.com/repos/welderbarmao-cyber/mkopa-loan';
 const BRANCH = 'kyc-docs';
 const TOKEN = process.env.GITHUB_TOKEN;
 
-// Cache for reads (Edge Config reads are unlimited)
-const readCache = new Map<string, unknown>();
+// Short-lived cache (1 second) to avoid duplicate reads within same request
+const readCache = new Map<string, { data: unknown; time: number }>();
+const CACHE_TTL = 1000; // 1 second
 
 async function ghRead<T = unknown>(path: string): Promise<T | null> {
+  if (!TOKEN) return null;
+  
   const cacheKey = `gh_${path}`;
-  if (readCache.has(cacheKey)) return readCache.get(cacheKey) as T;
+  const cached = readCache.get(cacheKey);
+  if (cached && Date.now() - cached.time < CACHE_TTL) {
+    return cached.data as T;
+  }
   
   try {
-    const url = `https://raw.githubusercontent.com/welderbarmao-cyber/mkopa-loan/${BRANCH}/${path}`;
-    const response = await fetch(url, {
-      headers: { 'Authorization': `token ${TOKEN}` },
+    // Use GitHub API (not raw URL) to avoid CDN caching
+    const response = await fetch(`${GITHUB_API}/contents/${path}?ref=${BRANCH}`, {
+      headers: {
+        'Authorization': `token ${TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+      },
+      cache: 'no-store',
     });
+    
     if (!response.ok) return null;
-    const data = await response.json();
-    readCache.set(cacheKey, data);
-    // Clear cache after 5 seconds
-    readCache.delete(cacheKey);
-    return data;
+    
+    const fileData = await response.json();
+    if (fileData.content && fileData.encoding === 'base64') {
+      const jsonStr = Buffer.from(fileData.content, 'base64').toString('utf-8');
+      const data = JSON.parse(jsonStr);
+      readCache.set(cacheKey, { data, time: Date.now() });
+      return data as T;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -41,7 +57,10 @@ async function ghWrite<T>(path: string, data: T): Promise<boolean> {
       let sha: string | undefined;
       try {
         const resp = await fetch(`${GITHUB_API}/contents/${path}?ref=${BRANCH}`, {
-          headers: { 'Authorization': `token ${TOKEN}`, 'Accept': 'application/vnd.github.v3+json' },
+          headers: {
+            'Authorization': `token ${TOKEN}`,
+            'Accept': 'application/vnd.github.v3+json',
+          },
           cache: 'no-store',
         });
         if (resp.ok) {
@@ -69,13 +88,14 @@ async function ghWrite<T>(path: string, data: T): Promise<boolean> {
       });
       
       if (response.ok) {
+        // Clear cache immediately after write
         readCache.delete(`gh_${path}`);
         return true;
       }
       
       // If conflict (409) or unprocessable (422), retry with fresh SHA
       if (response.status === 409 || response.status === 422) {
-        await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+        await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
         continue;
       }
       
@@ -87,7 +107,7 @@ async function ghWrite<T>(path: string, data: T): Promise<boolean> {
       return false;
     } catch {
       if (attempt < 2) {
-        await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+        await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
         continue;
       }
       return false;
@@ -158,7 +178,7 @@ async function ghWriteViaBlobs<T>(path: string, data: T): Promise<boolean> {
 
 // Data access functions
 export async function readData<T>(key: string): Promise<T | null> {
-  return await ghRead(`data/${key}.json`);
+  return await ghRead<T>(`data/${key}.json`);
 }
 
 export async function writeData<T>(key: string, data: T): Promise<boolean> {

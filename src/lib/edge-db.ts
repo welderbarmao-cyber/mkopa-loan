@@ -458,3 +458,4 @@ export async function initializeDatabase(): Promise<void> {
     await writeEdgeConfig(KYC_KEY, []);
   }
 }
+// Cache bust: Thu Jul  2 05:33:09 UTC 2026

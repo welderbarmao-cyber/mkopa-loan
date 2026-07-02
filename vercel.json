@@ -3,5 +3,10 @@
     "src/app/api/**/*.ts": {
       "maxDuration": 30
     }
+  },
+  "build": {
+    "env": {
+      "CACHE_BUSTER": "20260702v2"
+    }
   }
 }

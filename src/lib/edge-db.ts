@@ -174,7 +174,15 @@ export async function findUserByEmail(email: string): Promise<User | null> {
   const users = (await readEdgeConfig<User[]>(USERS_KEY)) || [];
   if (!Array.isArray(users)) return null;
   const user = users.find(u => u.email === email);
-  return user || null;
+  if (!user) return null;
+  // Handle legacy users with '__separate__' hash - fetch from pwd file
+  if (user.passwordHash === '__separate__') {
+    const pwd = await readEdgeConfig<{ passwordHash: string }>(`${PWD_PREFIX}${user.id}`);
+    if (pwd?.passwordHash) {
+      return { ...user, passwordHash: pwd.passwordHash };
+    }
+  }
+  return user;
 }
 
 export async function findUserById(id: number): Promise<User | null> {

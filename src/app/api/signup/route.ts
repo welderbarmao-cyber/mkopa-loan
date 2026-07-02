@@ -124,6 +124,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       user: { id: newId, email: body.email, name: body.name, role: 'customer' },
       message: 'Account created successfully',
+      _debug: { hasToken: !!process.env.GITHUB_TOKEN, routeVersion: 'direct-v2' },
     }, { status: 201 });
   } catch (e: unknown) {
     if (e instanceof z.ZodError) {

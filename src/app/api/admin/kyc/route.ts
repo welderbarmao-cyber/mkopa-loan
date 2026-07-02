@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getAllKyc, updateKyc, updateUser, getAllUsers, KycUpload, User } from '@/lib/edge-db';
+import { getAllKyc, updateKyc, updateUser, getAllUsers, KycUpload, User } from '@/lib/edge-db-v2';
 import { z } from 'zod';
 
 async function requireAdmin() {

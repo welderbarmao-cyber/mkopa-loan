@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllLoans, updateLoan } from '@/lib/edge-db';
+import { getAllLoans, updateLoan } from '@/lib/edge-db-v2';
 import { getPaymentStatus } from '@/lib/xdigitex';
 
 // Webhook handler for XDigitex payment notifications

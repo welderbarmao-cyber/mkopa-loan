@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { createKycUpload, findUserById, findUserByEmail } from '@/lib/edge-db';
+import { createKycUpload, findUserById, findUserByEmail } from '@/lib/edge-db-v2';
 import { isR2Configured, uploadToR2 } from '@/lib/r2';
 import { isGitHubConfigured, uploadToGitHub } from '@/lib/github-storage';
 import { z } from 'zod';

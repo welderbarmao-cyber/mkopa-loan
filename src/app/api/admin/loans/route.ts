@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getAllLoans, getAllUsers, updateLoan, createLoan, findUserById, User, Loan } from '@/lib/edge-db';
+import { getAllLoans, getAllUsers, updateLoan, createLoan, findUserById, User, Loan } from '@/lib/edge-db-v2';
 import { calculateActivationFee } from '@/lib/utils';
 import { z } from 'zod';
 

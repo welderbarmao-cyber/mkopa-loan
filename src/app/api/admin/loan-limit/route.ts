@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { findUserById, updateUserById } from '@/lib/edge-db';
+import { findUserById, updateUserById } from '@/lib/edge-db-v2';
 import { z } from 'zod';
 
 const assignSchema = z.object({

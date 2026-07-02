@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { initializeDatabase, findUserByEmail, createUser, updateUser } from '@/lib/edge-db';
+import { initializeDatabase, findUserByEmail, createUser, updateUser } from '@/lib/edge-db-v2';
 import { hash } from 'bcryptjs';
 
 export async function GET() {

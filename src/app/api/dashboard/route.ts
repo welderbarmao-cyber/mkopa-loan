@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { findUserByEmail, findUserById, getLoansByUserId, getKycByUserId } from '@/lib/edge-db';
+import { findUserByEmail, findUserById, getLoansByUserId, getKycByUserId } from '@/lib/edge-db-v2';
 
 export async function GET(req: NextRequest) {
   try {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { findUserById, findUserByEmail, createKycUpload, updateUser, getKycByUserId, KycUpload } from '@/lib/edge-db';
+import { findUserById, findUserByEmail, createKycUpload, updateUser, getKycByUserId, KycUpload } from '@/lib/edge-db-v2';
 import { z } from 'zod';
 
 const submitKycSchema = z.object({

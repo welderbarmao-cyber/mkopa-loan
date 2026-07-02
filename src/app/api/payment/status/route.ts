@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { findLoanById, updateLoan } from '@/lib/edge-db';
+import { findLoanById, updateLoan } from '@/lib/edge-db-v2';
 import { getPaymentStatus } from '@/lib/xdigitex';
 
 export async function GET(req: NextRequest) {

@@ -1,3 +1,5 @@
+// Build version: 20260702-final
+
 import { NextRequest, NextResponse } from 'next/server';
 import { hash } from 'bcryptjs';
 import { z } from 'zod';

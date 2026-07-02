@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { findUserById, findUserByEmail, findLoanById, updateLoan } from '@/lib/edge-db';
+import { findUserById, findUserByEmail, findLoanById, updateLoan } from '@/lib/edge-db-v2';
 import { initiatePayment, normalizePhone, detectNetwork, detectCountry } from '@/lib/xdigitex';
 import { z } from 'zod';
 

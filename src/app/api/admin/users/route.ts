@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getAllUsers } from '@/lib/edge-db';
+import { getAllUsers } from '@/lib/edge-db-v2';
 
 export async function GET() {
   try {

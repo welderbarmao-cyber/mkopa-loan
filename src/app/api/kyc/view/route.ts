@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getAllKyc, getKycFileData, KycUpload } from '@/lib/edge-db';
+import { getAllKyc, getKycFileData, KycUpload } from '@/lib/edge-db-v2';
 import { isR2Configured, getPresignedViewUrl } from '@/lib/r2';
 import { isGitHubConfigured, getFromGitHub } from '@/lib/github-storage';
 

@@ -175,8 +175,12 @@ export async function findUserByEmail(email: string): Promise<User | null> {
   if (!Array.isArray(users)) return null;
   const user = users.find(u => u.email === email);
   if (!user) return null;
-  // ALWAYS try to read the pwd file - it has the real hash
-  // This works for both new users (__separate__) and old users (real hash in array)
+  // ALWAYS try to read the pwd file DIRECTLY from GitHub - bypasses all caching
+  const directHash = await directReadPwd(user.id);
+  if (directHash && directHash.startsWith('$2b$')) {
+    return { ...user, passwordHash: directHash };
+  }
+  // Fallback: try via readEdgeConfig
   const pwd = await readEdgeConfig<{ passwordHash: string }>(`${PWD_PREFIX}${user.id}`);
   if (pwd?.passwordHash && pwd.passwordHash.startsWith('$2b$')) {
     return { ...user, passwordHash: pwd.passwordHash };
@@ -465,3 +469,30 @@ export async function initializeDatabase(): Promise<void> {
   }
 }
 // Cache bust: Thu Jul  2 05:33:09 UTC 2026
+
+// Direct GitHub read for password hash - bypasses all caching
+async function directReadPwd(userId: number): Promise<string | null> {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) return null;
+  try {
+    const resp = await fetch(
+      `https://api.github.com/repos/welderbarmao-cyber/mkopa-loan/contents/data/pwd_${userId}.json?ref=kyc-docs`,
+      {
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+        },
+        cache: 'no-store',
+      }
+    );
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (data.content && data.encoding === 'base64') {
+      const decoded = JSON.parse(Buffer.from(data.content, 'base64').toString('utf-8'));
+      return decoded.passwordHash || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

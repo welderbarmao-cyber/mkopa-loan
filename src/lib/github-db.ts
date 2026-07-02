@@ -32,53 +32,68 @@ async function ghRead<T = unknown>(path: string): Promise<T | null> {
 async function ghWrite<T>(path: string, data: T): Promise<boolean> {
   if (!TOKEN) return false;
   
-  try {
-    const content = Buffer.from(JSON.stringify(data)).toString('base64');
-    
-    // Get existing file SHA (if exists)
-    let sha: string | undefined;
+  // Retry up to 3 times (handles SHA conflicts from concurrent writes)
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const resp = await fetch(`${GITHUB_API}/contents/${path}?ref=${BRANCH}`, {
-        headers: { 'Authorization': `token ${TOKEN}`, 'Accept': 'application/vnd.github.v3+json' },
+      const content = Buffer.from(JSON.stringify(data)).toString('base64');
+      
+      // Get existing file SHA (if exists) - fresh each attempt
+      let sha: string | undefined;
+      try {
+        const resp = await fetch(`${GITHUB_API}/contents/${path}?ref=${BRANCH}`, {
+          headers: { 'Authorization': `token ${TOKEN}`, 'Accept': 'application/vnd.github.v3+json' },
+          cache: 'no-store',
+        });
+        if (resp.ok) {
+          const fileData = await resp.json();
+          sha = fileData.sha;
+        }
+      } catch {}
+      
+      // Create or update file
+      const body: { message: string; content: string; branch: string; sha?: string } = {
+        message: `Update ${path}`,
+        content,
+        branch: BRANCH,
+      };
+      if (sha) body.sha = sha;
+      
+      const response = await fetch(`${GITHUB_API}/contents/${path}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `token ${TOKEN}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/vnd.github.v3+json',
+        },
+        body: JSON.stringify(body),
       });
-      if (resp.ok) {
-        const fileData = await resp.json();
-        sha = fileData.sha;
+      
+      if (response.ok) {
+        readCache.delete(`gh_${path}`);
+        return true;
       }
-    } catch {}
-    
-    // Create or update file
-    const body: { message: string; content: string; branch: string; sha?: string } = {
-      message: `Update ${path}`,
-      content,
-      branch: BRANCH,
-    };
-    if (sha) body.sha = sha;
-    
-    const response = await fetch(`${GITHUB_API}/contents/${path}`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `token ${TOKEN}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/vnd.github.v3+json',
-      },
-      body: JSON.stringify(body),
-    });
-    
-    if (!response.ok) {
+      
+      // If conflict (409) or unprocessable (422), retry with fresh SHA
+      if (response.status === 409 || response.status === 422) {
+        await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+        continue;
+      }
+      
       // If file too large for Contents API, use Blobs API
       if (response.status === 413 || JSON.stringify(data).length > 500000) {
         return await ghWriteViaBlobs(path, data);
       }
+      
+      return false;
+    } catch {
+      if (attempt < 2) {
+        await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+        continue;
+      }
       return false;
     }
-    
-    // Clear cache
-    readCache.delete(`gh_${path}`);
-    return true;
-  } catch {
-    return false;
   }
+  return false;
 }
 
 async function ghWriteViaBlobs<T>(path: string, data: T): Promise<boolean> {

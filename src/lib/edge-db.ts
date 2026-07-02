@@ -87,6 +87,7 @@ const USERS_KEY = 'users';
 const LOANS_KEY = 'loans';
 const KYC_KEY = 'kyc_uploads';
 const COUNTERS_KEY = 'counters';
+const PWD_PREFIX = 'pwd_'; // Password hashes stored separately to keep users array small
 
 // ---------- Write helper (Vercel API v9) ----------
 
@@ -152,7 +153,16 @@ async function getNextId(type: 'user' | 'loan' | 'kyc'): Promise<number> {
 export async function findUserByEmail(email: string): Promise<User | null> {
   const users = (await readEdgeConfig<User[]>(USERS_KEY)) || [];
   if (!Array.isArray(users)) return null;
-  return users.find(u => u.email === email) || null;
+  const user = users.find(u => u.email === email);
+  if (!user) return null;
+  // Fetch password hash from separate key
+  if (user.passwordHash === '__separate__') {
+    const pwd = await readEdgeConfig<{ passwordHash: string }>(`${PWD_PREFIX}${user.id}`);
+    if (pwd?.passwordHash) {
+      return { ...user, passwordHash: pwd.passwordHash };
+    }
+  }
+  return user;
 }
 
 export async function findUserById(id: number): Promise<User | null> {
@@ -163,7 +173,8 @@ export async function findUserById(id: number): Promise<User | null> {
 
 export async function getAllUsers(): Promise<User[]> {
   const users = (await readEdgeConfig<User[]>(USERS_KEY)) || [];
-  return Array.isArray(users) ? users : [];
+  // Strip password hashes to keep data small
+  return (Array.isArray(users) ? users : []).map(u => ({ ...u, passwordHash: '' }));
 }
 
 export async function createUser(data: {
@@ -179,7 +190,7 @@ export async function createUser(data: {
     id,
     email: data.email,
     name: data.name,
-    passwordHash: data.passwordHash,
+    passwordHash: '__separate__', // Don't store hash in array - keeps it small
     role: data.role || 'customer',
     phone: data.phone,
     kycStatus: 'none',
@@ -188,13 +199,20 @@ export async function createUser(data: {
   };
   users.push(newUser);
   await writeEdgeConfig(USERS_KEY, users);
-  return newUser;
+  // Store password hash in SEPARATE key to keep users array small
+  await writeEdgeConfig(`${PWD_PREFIX}${id}`, { passwordHash: data.passwordHash });
+  return { ...newUser, passwordHash: data.passwordHash };
 }
 
 export async function updateUser(email: string, updates: Partial<User>): Promise<void> {
   const users = (await readEdgeConfig<User[]>(USERS_KEY)) || [];
   const idx = users.findIndex(u => u.email === email);
   if (idx >= 0) {
+    // If updating password, store hash separately
+    if (updates.passwordHash && updates.passwordHash !== '__separate__') {
+      await writeEdgeConfig(`${PWD_PREFIX}${users[idx].id}`, { passwordHash: updates.passwordHash });
+      updates.passwordHash = '__separate__';
+    }
     users[idx] = { ...users[idx], ...updates };
     await writeEdgeConfig(USERS_KEY, users);
   }
@@ -204,6 +222,11 @@ export async function updateUserById(userId: number, updates: Partial<User>): Pr
   const users = (await readEdgeConfig<User[]>(USERS_KEY)) || [];
   const idx = users.findIndex(u => u.id === userId);
   if (idx >= 0) {
+    // If updating password, store hash separately
+    if (updates.passwordHash && updates.passwordHash !== '__separate__') {
+      await writeEdgeConfig(`${PWD_PREFIX}${userId}`, { passwordHash: updates.passwordHash });
+      updates.passwordHash = '__separate__';
+    }
     users[idx] = { ...users[idx], ...updates };
     await writeEdgeConfig(USERS_KEY, users);
   }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { findUserByEmail, getLoansByUserId, getKycByUserId } from '@/lib/edge-db';
+import { findUserByEmail, findUserById, getLoansByUserId, getKycByUserId } from '@/lib/edge-db';
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,7 +17,12 @@ export async function GET(req: NextRequest) {
 
     if (!email) return NextResponse.json({ error: 'Email required' }, { status: 400 });
 
-    const user = await findUserByEmail(email);
+    let user = await findUserByEmail(email);
+    if (!user) {
+      // Fallback: try by session ID
+      const userId = parseInt((session?.user as { id?: string })?.id || "0");
+      user = await findUserById(userId);
+    }
     if (!user) return NextResponse.json({ loans: [], kyc: [], user: null });
 
     const loans = await getLoansByUserId(user.id);

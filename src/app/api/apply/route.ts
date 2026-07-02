@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { findUserById, createLoan, Guarantor } from '@/lib/edge-db';
+import { findUserById, findUserByEmail, createLoan, Guarantor } from '@/lib/edge-db';
 import { calculateActivationFee } from '@/lib/utils';
 import { z } from 'zod';
 
@@ -49,8 +49,12 @@ export async function POST(req: NextRequest) {
     }
 
     const userId = parseInt((session.user as { id: string }).id);
-    const user = await findUserById(userId);
+    let user = await findUserById(userId);
+    if (!user && session.user.email) {
+      user = await findUserByEmail(session.user.email);
+    }
     if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    const actualUserId = user.id;
 
     if (user.kycStatus !== 'approved') {
       return NextResponse.json({
@@ -63,7 +67,7 @@ export async function POST(req: NextRequest) {
     const activationFee = calculateActivationFee(body.amount);
 
     const loan = await createLoan({
-      userId,
+      userId: actualUserId,
       amount: body.amount,
       termMonths: body.termMonths,
       productType: body.productType,

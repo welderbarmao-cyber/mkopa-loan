@@ -89,15 +89,27 @@ const KYC_KEY = 'kyc_uploads';
 const COUNTERS_KEY = 'counters';
 const PWD_PREFIX = 'pwd_'; // Password hashes stored separately to keep users array small
 
-// ---------- Write helper (Vercel API v9) ----------
+// ---------- Storage helpers ----------
+// Edge Config: READS only (unlimited, fast)
+// GitHub: WRITES only (5000 req/hour, no monthly limit)
+// Edge Config free plan exhausted 250 writes/month
+
+import { writeData as ghWrite, readData as ghRead, isGitHubDbConfigured } from './github-db';
 
 async function writeEdgeConfig(key: string, value: unknown): Promise<void> {
+  // Try GitHub first (no rate limits)
+  if (isGitHubDbConfigured()) {
+    const success = await ghWrite(key, value);
+    if (success) return;
+  }
+
+  // Fallback to Edge Config (may fail due to rate limit)
   const ecId = process.env.EDGE_CONFIG;
   const vercelToken = process.env.VERCEL_TOKEN;
   const teamId = process.env.VERCEL_TEAM_ID;
 
   if (!ecId || !vercelToken || !teamId) {
-    throw new Error('EDGE_CONFIG, VERCEL_TOKEN, or VERCEL_TEAM_ID not set');
+    throw new Error('No storage configured');
   }
 
   const idMatch = ecId.match(/ecfg_[a-zA-Z0-9]+/);
@@ -123,6 +135,12 @@ async function writeEdgeConfig(key: string, value: unknown): Promise<void> {
 }
 
 async function readEdgeConfig<T>(key: string): Promise<T | undefined> {
+  // Try GitHub first (has latest data since writes go there)
+  if (isGitHubDbConfigured()) {
+    const ghData = await ghRead<T>(key);
+    if (ghData !== null) return ghData;
+  }
+  // Fallback to Edge Config (has old data, reads unlimited)
   return await ecGet<T>(key);
 }
 

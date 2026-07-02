@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { createKycUpload } from '@/lib/edge-db';
+import { createKycUpload, findUserById, findUserByEmail } from '@/lib/edge-db';
 import { isR2Configured, uploadToR2 } from '@/lib/r2';
 import { isGitHubConfigured, uploadToGitHub } from '@/lib/github-storage';
 import { z } from 'zod';
@@ -20,11 +20,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     const userId = parseInt((session.user as { id: string }).id);
+    let user = await findUserById(userId);
+    if (!user && session.user.email) {
+      user = await findUserByEmail(session.user.email);
+    }
+    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    const actualUserId = user.id;
     const body = schema.parse(await req.json());
 
-    const r2Key = `kyc/${userId}/${body.documentType}-${Date.now()}`;
+    const r2Key = `kyc/${actualUserId}/${body.documentType}-${Date.now()}`;
     const ext = body.contentType.includes('png') ? 'png' : 'jpg';
-    const ghFilename = `${userId}_${body.documentType}_${Date.now()}.${ext}`;
+    const ghFilename = `${actualUserId}_${body.documentType}_${Date.now()}.${ext}`;
 
     let storage: 'r2' | 'github' = 'github';
     let storedFileData: string | undefined = body.fileData;
@@ -68,7 +74,7 @@ export async function POST(req: NextRequest) {
 
     // Create KYC upload record - NO fileData stored in Edge Config
     const upload = await createKycUpload({
-      userId,
+      userId: actualUserId,
       documentType: body.documentType,
       r2Key: storage === 'github' ? `github/${ghFilename}` : r2Key,
       fileData: undefined, // NEVER store file data in Edge Config

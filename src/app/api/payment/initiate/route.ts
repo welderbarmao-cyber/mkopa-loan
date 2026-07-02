@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { findUserById, findLoanById, updateLoan } from '@/lib/edge-db';
+import { findUserById, findUserByEmail, findLoanById, updateLoan } from '@/lib/edge-db';
 import { initiatePayment, normalizePhone, detectNetwork, detectCountry } from '@/lib/xdigitex';
 import { z } from 'zod';
 
@@ -20,19 +20,22 @@ export async function POST(req: NextRequest) {
     const userId = parseInt((session.user as { id: string }).id);
     const body = initiateSchema.parse(await req.json());
 
+    let user = await findUserById(userId);
+    if (!user && session.user.email) {
+      user = await findUserByEmail(session.user.email);
+    }
+    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
     const loan = await findLoanById(body.loanId);
     if (!loan) {
       return NextResponse.json({ error: 'Loan not found' }, { status: 404 });
     }
-    if (loan.userId !== userId) {
+    if (loan.userId !== user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
     if (loan.activationFeeStatus === 'paid') {
       return NextResponse.json({ error: 'Activation fee already paid' }, { status: 400 });
     }
-
-    const user = await findUserById(userId);
-    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
     const normalizedPhone = normalizePhone(body.phone);
     const network = detectNetwork(body.phone);

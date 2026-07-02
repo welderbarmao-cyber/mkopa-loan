@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { findUserById, createKycUpload, updateUser, getKycByUserId, KycUpload } from '@/lib/edge-db';
+import { findUserById, findUserByEmail, createKycUpload, updateUser, getKycByUserId, KycUpload } from '@/lib/edge-db';
 import { z } from 'zod';
 
 const submitKycSchema = z.object({
@@ -19,10 +19,14 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     const userId = parseInt((session.user as { id: string }).id);
-    const user = await findUserById(userId);
+    let user = await findUserById(userId);
+    if (!user && session.user.email) {
+      user = await findUserByEmail(session.user.email);
+    }
     if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    const actualUserId = user.id;
 
-    const kycDocs = await getKycByUserId(userId);
+    const kycDocs = await getKycByUserId(actualUserId);
     return NextResponse.json({
       kycStatus: user.kycStatus,
       kycSubmittedAt: user.kycSubmittedAt,
@@ -50,8 +54,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     const userId = parseInt((session.user as { id: string }).id);
-    const user = await findUserById(userId);
+    let user = await findUserById(userId);
+    if (!user && session.user.email) {
+      user = await findUserByEmail(session.user.email);
+    }
     if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    const actualUserId = user.id;
 
     if (user.kycStatus === 'approved') {
       return NextResponse.json({ error: 'KYC already approved' }, { status: 400 });
@@ -62,7 +70,7 @@ export async function POST(req: NextRequest) {
     // Create KYC upload records
     for (const doc of body.documents) {
       await createKycUpload({
-        userId,
+        userId: actualUserId,
         documentType: doc.documentType,
         r2Key: doc.r2Key,
       });

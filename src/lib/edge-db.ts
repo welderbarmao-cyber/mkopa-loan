@@ -174,15 +174,7 @@ export async function findUserByEmail(email: string): Promise<User | null> {
   const users = (await readEdgeConfig<User[]>(USERS_KEY)) || [];
   if (!Array.isArray(users)) return null;
   const user = users.find(u => u.email === email);
-  if (!user) return null;
-  // Fetch password hash from separate key
-  if (user.passwordHash === '__separate__') {
-    const pwd = await readEdgeConfig<{ passwordHash: string }>(`${PWD_PREFIX}${user.id}`);
-    if (pwd?.passwordHash) {
-      return { ...user, passwordHash: pwd.passwordHash };
-    }
-  }
-  return user;
+  return user || null;
 }
 
 export async function findUserById(id: number): Promise<User | null> {
@@ -210,7 +202,7 @@ export async function createUser(data: {
     id,
     email: data.email,
     name: data.name,
-    passwordHash: '__separate__', // Don't store hash in array - keeps it small
+    passwordHash: data.passwordHash, // Store hash directly - GitHub has no size limit
     role: data.role || 'customer',
     phone: data.phone,
     kycStatus: 'none',
@@ -219,20 +211,13 @@ export async function createUser(data: {
   };
   users.push(newUser);
   await writeEdgeConfig(USERS_KEY, users);
-  // Store password hash in SEPARATE key to keep users array small
-  await writeEdgeConfig(`${PWD_PREFIX}${id}`, { passwordHash: data.passwordHash });
-  return { ...newUser, passwordHash: data.passwordHash };
+  return newUser;
 }
 
 export async function updateUser(email: string, updates: Partial<User>): Promise<void> {
   const users = (await readEdgeConfig<User[]>(USERS_KEY)) || [];
   const idx = users.findIndex(u => u.email === email);
   if (idx >= 0) {
-    // If updating password, store hash separately
-    if (updates.passwordHash && updates.passwordHash !== '__separate__') {
-      await writeEdgeConfig(`${PWD_PREFIX}${users[idx].id}`, { passwordHash: updates.passwordHash });
-      updates.passwordHash = '__separate__';
-    }
     users[idx] = { ...users[idx], ...updates };
     await writeEdgeConfig(USERS_KEY, users);
   }
@@ -242,11 +227,6 @@ export async function updateUserById(userId: number, updates: Partial<User>): Pr
   const users = (await readEdgeConfig<User[]>(USERS_KEY)) || [];
   const idx = users.findIndex(u => u.id === userId);
   if (idx >= 0) {
-    // If updating password, store hash separately
-    if (updates.passwordHash && updates.passwordHash !== '__separate__') {
-      await writeEdgeConfig(`${PWD_PREFIX}${userId}`, { passwordHash: updates.passwordHash });
-      updates.passwordHash = '__separate__';
-    }
     users[idx] = { ...users[idx], ...updates };
     await writeEdgeConfig(USERS_KEY, users);
   }

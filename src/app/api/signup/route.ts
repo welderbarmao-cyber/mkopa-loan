@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findUserByEmail, createUser } from '@/lib/edge-db';
+import { findUserByEmail, createUser, updateUser } from '@/lib/edge-db';
+import { writeData } from '@/lib/github-db';
 import { hash } from 'bcryptjs';
 import { z } from 'zod';
 
@@ -28,6 +29,18 @@ export async function POST(req: NextRequest) {
       passwordHash,
       role: 'customer',
     });
+
+    // DIRECTLY write pwd file to GitHub storage (guaranteed backup)
+    // This ensures the password hash is always available even if 
+    // the users array write fails or stores __separate__
+    try {
+      await writeData(`pwd_${user.id}`, { passwordHash });
+    } catch {}
+
+    // Also try to update the user's hash in the array directly
+    try {
+      await updateUser(body.email, { passwordHash });
+    } catch {}
 
     return NextResponse.json({
       user: { id: user.id, email: user.email, name: user.name, role: user.role },

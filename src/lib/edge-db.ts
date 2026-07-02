@@ -87,7 +87,7 @@ const USERS_KEY = 'users';
 const LOANS_KEY = 'loans';
 const KYC_KEY = 'kyc_uploads';
 const COUNTERS_KEY = 'counters';
-const PWD_PREFIX = 'pwd_'; // Password hashes stored separately to keep users array small
+export const PWD_PREFIX = 'pwd_'; // Password hashes stored separately to keep users array small
 
 // ---------- Storage helpers ----------
 // Edge Config: READS only (unlimited, fast)
@@ -175,13 +175,17 @@ export async function findUserByEmail(email: string): Promise<User | null> {
   if (!Array.isArray(users)) return null;
   const user = users.find(u => u.email === email);
   if (!user) return null;
-  // Handle legacy users with '__separate__' hash - fetch from pwd file
-  if (user.passwordHash === '__separate__') {
-    const pwd = await readEdgeConfig<{ passwordHash: string }>(`${PWD_PREFIX}${user.id}`);
-    if (pwd?.passwordHash) {
-      return { ...user, passwordHash: pwd.passwordHash };
-    }
+  // ALWAYS try to read the pwd file - it has the real hash
+  // This works for both new users (__separate__) and old users (real hash in array)
+  const pwd = await readEdgeConfig<{ passwordHash: string }>(`${PWD_PREFIX}${user.id}`);
+  if (pwd?.passwordHash && pwd.passwordHash.startsWith('$2b$')) {
+    return { ...user, passwordHash: pwd.passwordHash };
   }
+  // If pwd file doesn't exist, use the hash from the array
+  if (user.passwordHash && user.passwordHash.startsWith('$2b$')) {
+    return user;
+  }
+  // If both fail, return user as-is (will fail login but at least we tried)
   return user;
 }
 

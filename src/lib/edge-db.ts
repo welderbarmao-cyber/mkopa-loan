@@ -97,13 +97,15 @@ const PWD_PREFIX = 'pwd_'; // Password hashes stored separately to keep users ar
 import { writeData as ghWrite, readData as ghRead, isGitHubDbConfigured } from './github-db';
 
 async function writeEdgeConfig(key: string, value: unknown): Promise<void> {
-  // Try GitHub first (no rate limits)
+  // Try GitHub first (no rate limits, 5000 req/hour)
   if (isGitHubDbConfigured()) {
     const success = await ghWrite(key, value);
     if (success) return;
+    // GitHub write failed - throw error (don't silently fall back to rate-limited Edge Config)
+    throw new Error('Failed to write data. Please try again.');
   }
 
-  // Fallback to Edge Config (may fail due to rate limit)
+  // No GitHub configured - try Edge Config
   const ecId = process.env.EDGE_CONFIG;
   const vercelToken = process.env.VERCEL_TOKEN;
   const teamId = process.env.VERCEL_TEAM_ID;

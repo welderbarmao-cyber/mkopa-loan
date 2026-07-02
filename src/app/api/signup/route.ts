@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findUserByEmail, createUser } from '@/lib/edge-db';
-import { writeData } from '@/lib/github-db';
 import { hash } from 'bcryptjs';
 import { z } from 'zod';
 
@@ -11,62 +9,118 @@ const signupSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
+const GITHUB_API = 'https://api.github.com/repos/welderbarmao-cyber/mkopa-loan';
+const BRANCH = 'kyc-docs';
+
+async function ghReadFile(path: string): Promise<{ content: string; sha: string } | null> {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) return null;
+  try {
+    const resp = await fetch(`${GITHUB_API}/contents/${path}?ref=${BRANCH}`, {
+      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' },
+      cache: 'no-store',
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return {
+      content: Buffer.from(data.content, 'base64').toString('utf-8'),
+      sha: data.sha,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function ghWriteFile(path: string, content: string, sha?: string): Promise<boolean> {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) return false;
+  try {
+    const body: Record<string, string> = {
+      message: `Update ${path}`,
+      content: Buffer.from(content).toString('base64'),
+      branch: BRANCH,
+    };
+    if (sha) body.sha = sha;
+    
+    // Retry up to 3 times for SHA conflicts
+    for (let i = 0; i < 3; i++) {
+      const resp = await fetch(`${GITHUB_API}/contents/${path}`, {
+        method: 'PUT',
+        headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (resp.ok) return true;
+      if (resp.status === 409 || resp.status === 422) {
+        // SHA conflict - get fresh SHA and retry
+        const fresh = await ghReadFile(path);
+        if (fresh) body.sha = fresh.sha;
+        await new Promise(r => setTimeout(r, 300 * (i + 1)));
+        continue;
+      }
+      return false;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = signupSchema.parse(await req.json());
+    const passwordHash = await hash(body.password, 12);
 
-    const existing = await findUserByEmail(body.email);
-    if (existing) {
+    // Read current users directly from GitHub
+    const usersFile = await ghReadFile('data/users.json');
+    if (!usersFile) {
+      return NextResponse.json({ error: 'Failed to read user data' }, { status: 500 });
+    }
+
+    const users = JSON.parse(usersFile.content);
+    
+    // Check if email already exists
+    if (users.some((u: { email: string }) => u.email === body.email)) {
       return NextResponse.json({ error: 'An account with this email already exists' }, { status: 409 });
     }
 
-    const passwordHash = await hash(body.password, 12);
+    // Generate new user ID
+    const countersFile = await ghReadFile('data/counters.json');
+    if (!countersFile) {
+      return NextResponse.json({ error: 'Failed to read counters' }, { status: 500 });
+    }
+    const counters = JSON.parse(countersFile.content);
+    const newId = (counters.user || 1) + 1;
+    counters.user = newId;
 
-    const user = await createUser({
+    // Create new user WITH REAL HASH
+    const newUser = {
+      id: newId,
       email: body.email,
       name: body.name,
-      phone: body.phone,
-      passwordHash,
+      passwordHash: passwordHash, // REAL HASH - not __separate__
       role: 'customer',
-    });
+      phone: body.phone,
+      kycStatus: 'none',
+      loanLimit: 0,
+      createdAt: new Date().toISOString(),
+    };
 
-    // DIRECTLY write pwd file to GitHub (guaranteed to work)
-    await writeData(`pwd_${user.id}`, { passwordHash });
+    users.push(newUser);
 
-    // DIRECTLY fix the user's hash in the users array
-    // Read current users, fix this user's hash, write back
-    try {
-      const token = process.env.GITHUB_TOKEN;
-      if (token) {
-        // Read users.json
-        const usersResp = await fetch(
-          'https://api.github.com/repos/welderbarmao-cyber/mkopa-loan/contents/data/users.json?ref=kyc-docs',
-          { headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }, cache: 'no-store' }
-        );
-        if (usersResp.ok) {
-          const usersFile = await usersResp.json();
-          const users = JSON.parse(Buffer.from(usersFile.content, 'base64').toString('utf-8'));
-          const sha = usersFile.sha;
-          
-          // Fix this user's hash
-          const idx = users.findIndex((u: { id: number }) => u.id === user.id);
-          if (idx >= 0) {
-            users[idx].passwordHash = passwordHash;
-          }
-          
-          // Write back
-          const content = Buffer.from(JSON.stringify(users)).toString('base64');
-          await fetch('https://api.github.com/repos/welderbarmao-cyber/mkopa-loan/contents/data/users.json', {
-            method: 'PUT',
-            headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: `Fix hash for user ${user.id}`, content, branch: 'kyc-docs', sha }),
-          });
-        }
-      }
-    } catch {}
+    // Write users array with REAL HASH
+    const usersWritten = await ghWriteFile('data/users.json', JSON.stringify(users), usersFile.sha);
+    if (!usersWritten) {
+      return NextResponse.json({ error: 'Failed to save account. Please try again.' }, { status: 500 });
+    }
+
+    // Also write pwd file as backup
+    await ghWriteFile(`data/pwd_${newId}.json`, JSON.stringify({ passwordHash }));
+
+    // Update counters
+    await ghWriteFile('data/counters.json', JSON.stringify(counters), countersFile.sha);
 
     return NextResponse.json({
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      user: { id: newId, email: body.email, name: body.name, role: 'customer' },
       message: 'Account created successfully',
     }, { status: 201 });
   } catch (e: unknown) {

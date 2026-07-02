@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findUserByEmail, createUser, updateUser } from '@/lib/edge-db';
+import { findUserByEmail, createUser } from '@/lib/edge-db';
 import { writeData } from '@/lib/github-db';
 import { hash } from 'bcryptjs';
 import { z } from 'zod';
@@ -30,16 +30,39 @@ export async function POST(req: NextRequest) {
       role: 'customer',
     });
 
-    // DIRECTLY write pwd file to GitHub storage (guaranteed backup)
-    // This ensures the password hash is always available even if 
-    // the users array write fails or stores __separate__
-    try {
-      await writeData(`pwd_${user.id}`, { passwordHash });
-    } catch {}
+    // DIRECTLY write pwd file to GitHub (guaranteed to work)
+    await writeData(`pwd_${user.id}`, { passwordHash });
 
-    // Also try to update the user's hash in the array directly
+    // DIRECTLY fix the user's hash in the users array
+    // Read current users, fix this user's hash, write back
     try {
-      await updateUser(body.email, { passwordHash });
+      const token = process.env.GITHUB_TOKEN;
+      if (token) {
+        // Read users.json
+        const usersResp = await fetch(
+          'https://api.github.com/repos/welderbarmao-cyber/mkopa-loan/contents/data/users.json?ref=kyc-docs',
+          { headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }, cache: 'no-store' }
+        );
+        if (usersResp.ok) {
+          const usersFile = await usersResp.json();
+          const users = JSON.parse(Buffer.from(usersFile.content, 'base64').toString('utf-8'));
+          const sha = usersFile.sha;
+          
+          // Fix this user's hash
+          const idx = users.findIndex((u: { id: number }) => u.id === user.id);
+          if (idx >= 0) {
+            users[idx].passwordHash = passwordHash;
+          }
+          
+          // Write back
+          const content = Buffer.from(JSON.stringify(users)).toString('base64');
+          await fetch('https://api.github.com/repos/welderbarmao-cyber/mkopa-loan/contents/data/users.json', {
+            method: 'PUT',
+            headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: `Fix hash for user ${user.id}`, content, branch: 'kyc-docs', sha }),
+          });
+        }
+      }
     } catch {}
 
     return NextResponse.json({

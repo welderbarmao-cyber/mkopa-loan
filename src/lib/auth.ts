@@ -14,20 +14,36 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        const user = await findUserByEmail(credentials.email);
-        if (!user) return null;
+        try {
+          const user = await findUserByEmail(credentials.email);
+          if (!user) {
+            console.log('Login failed: user not found for', credentials.email);
+            return null;
+          }
 
-        // Allow both admin and customer login
-        const valid = await compare(credentials.password, user.passwordHash);
-        if (!valid) return null;
+          // Check if passwordHash is valid
+          if (!user.passwordHash || !user.passwordHash.startsWith('$2b$')) {
+            console.log('Login failed: invalid hash for', credentials.email, '- hash:', user.passwordHash?.substring(0, 20));
+            return null;
+          }
 
-        return {
-          id: String(user.id),
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          phone: user.phone || undefined,
-        };
+          const valid = await compare(credentials.password, user.passwordHash);
+          if (!valid) {
+            console.log('Login failed: password mismatch for', credentials.email);
+            return null;
+          }
+
+          return {
+            id: String(user.id),
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            phone: user.phone || undefined,
+          };
+        } catch (e) {
+          console.log('Login error for', credentials.email, ':', e instanceof Error ? e.message : 'unknown');
+          return null;
+        }
       },
     }),
   ],

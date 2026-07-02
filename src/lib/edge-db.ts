@@ -171,26 +171,61 @@ async function getNextId(type: 'user' | 'loan' | 'kyc'): Promise<number> {
 // ---------- Users ----------
 
 export async function findUserByEmail(email: string): Promise<User | null> {
-  const users = (await readEdgeConfig<User[]>(USERS_KEY)) || [];
-  if (!Array.isArray(users)) return null;
-  const user = users.find(u => u.email === email);
-  if (!user) return null;
-  // ALWAYS try to read the pwd file DIRECTLY from GitHub - bypasses all caching
-  const directHash = await directReadPwd(user.id);
-  if (directHash && directHash.startsWith('$2b$')) {
-    return { ...user, passwordHash: directHash };
+  // Read users directly from GitHub API (bypasses all caching/fallback logic)
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    // Fallback to edge config if no GitHub token
+    const users = (await readEdgeConfig<User[]>(USERS_KEY)) || [];
+    if (!Array.isArray(users)) return null;
+    return users.find(u => u.email === email) || null;
   }
-  // Fallback: try via readEdgeConfig
-  const pwd = await readEdgeConfig<{ passwordHash: string }>(`${PWD_PREFIX}${user.id}`);
-  if (pwd?.passwordHash && pwd.passwordHash.startsWith('$2b$')) {
-    return { ...user, passwordHash: pwd.passwordHash };
-  }
-  // If pwd file doesn't exist, use the hash from the array
-  if (user.passwordHash && user.passwordHash.startsWith('$2b$')) {
+  
+  try {
+    // Read users.json directly from GitHub API
+    const usersResp = await fetch(
+      'https://api.github.com/repos/welderbarmao-cyber/mkopa-loan/contents/data/users.json?ref=kyc-docs',
+      {
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+        },
+        cache: 'no-store',
+      }
+    );
+    if (!usersResp.ok) return null;
+    const usersFile = await usersResp.json();
+    const usersContent = JSON.parse(Buffer.from(usersFile.content, 'base64').toString('utf-8'));
+    const user = usersContent.find((u: User) => u.email === email);
+    if (!user) return null;
+    
+    // Read pwd file directly from GitHub API
+    const pwdResp = await fetch(
+      `https://api.github.com/repos/welderbarmao-cyber/mkopa-loan/contents/data/pwd_${user.id}.json?ref=kyc-docs`,
+      {
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+        },
+        cache: 'no-store',
+      }
+    );
+    if (pwdResp.ok) {
+      const pwdFile = await pwdResp.json();
+      const pwdContent = JSON.parse(Buffer.from(pwdFile.content, 'base64').toString('utf-8'));
+      if (pwdContent.passwordHash && pwdContent.passwordHash.startsWith('$2b$')) {
+        return { ...user, passwordHash: pwdContent.passwordHash };
+      }
+    }
+    
+    // If pwd file doesn't exist, use hash from array
+    if (user.passwordHash && user.passwordHash.startsWith('$2b$')) {
+      return user;
+    }
+    
     return user;
+  } catch {
+    return null;
   }
-  // If both fail, return user as-is (will fail login but at least we tried)
-  return user;
 }
 
 export async function findUserById(id: number): Promise<User | null> {

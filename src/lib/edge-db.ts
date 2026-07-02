@@ -210,7 +210,7 @@ export async function createUser(data: {
     id,
     email: data.email,
     name: data.name,
-    passwordHash: data.passwordHash, // Store hash directly - GitHub has no size limit
+    passwordHash: data.passwordHash,
     role: data.role || 'customer',
     phone: data.phone,
     kycStatus: 'none',
@@ -219,6 +219,8 @@ export async function createUser(data: {
   };
   users.push(newUser);
   await writeEdgeConfig(USERS_KEY, users);
+  // Also store hash separately as backup
+  await writeEdgeConfig(`${PWD_PREFIX}${id}`, { passwordHash: data.passwordHash });
   return newUser;
 }
 

@@ -94,12 +94,12 @@ const PWD_PREFIX = 'pwd_'; // Password hashes stored separately to keep users ar
 // GitHub: WRITES only (5000 req/hour, no monthly limit)
 // Edge Config free plan exhausted 250 writes/month
 
-import { writeData as ghWrite, readData as ghRead, isGitHubDbConfigured } from './github-db';
+import { writeData, readData, isGitHubDbConfigured } from './github-db';
 
 async function writeEdgeConfig(key: string, value: unknown): Promise<void> {
   // Try GitHub first (no rate limits, 5000 req/hour)
   if (isGitHubDbConfigured()) {
-    const success = await ghWrite(key, value);
+    const success = await writeData(key, value);
     if (success) return;
     // GitHub write failed - throw error (don't silently fall back to rate-limited Edge Config)
     throw new Error('Failed to write data. Please try again.');
@@ -139,7 +139,7 @@ async function writeEdgeConfig(key: string, value: unknown): Promise<void> {
 async function readEdgeConfig<T>(key: string): Promise<T | undefined> {
   // Try GitHub first (has latest data since writes go there)
   if (isGitHubDbConfigured()) {
-    const ghData = await ghRead<T>(key);
+    const ghData = await readData<T>(key);
     if (ghData !== null) return ghData;
   }
   // Fallback to Edge Config (has old data, reads unlimited)

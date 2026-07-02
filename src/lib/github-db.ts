@@ -22,7 +22,7 @@ async function ghRead<T = unknown>(path: string): Promise<T | null> {
     const data = await response.json();
     readCache.set(cacheKey, data);
     // Clear cache after 5 seconds
-    setTimeout(() => readCache.delete(cacheKey), 5000);
+    readCache.delete(cacheKey);
     return data;
   } catch {
     return null;

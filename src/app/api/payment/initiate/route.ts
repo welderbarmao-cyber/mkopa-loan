@@ -78,12 +78,34 @@ export async function POST(req: NextRequest) {
       webhook_url: `https://m-kopa.kesug.qzz.io/api/payment/webhook`,
     });
 
+    // Check if the STK push was actually accepted by the mobile network.
+    // PawaPay returns pawa_status: ACCEPTED | PENDING | REJECTED | FAILED
+    // Only ACCEPTED and PENDING mean a prompt was actually sent to the phone.
+    const stkAccepted = payment.pawa_status === 'ACCEPTED' || payment.pawa_status === 'PENDING';
+
+    if (!stkAccepted) {
+      // STK push was REJECTED or FAILED — no prompt will appear on the phone.
+      // Common causes: fake/test number, number not registered for mobile money,
+      // wrong network, or network-side rejection.
+      const reason =
+        payment.pawa_status === 'REJECTED'
+          ? `The mobile network rejected the payment prompt for ${normalizedPhone}. This usually means the number is not registered for ${network} mobile money, or the number is invalid. Please use a real ${network} registered phone number.`
+          : `Payment could not be initiated (status: ${payment.pawa_status}). Please try again or contact support.`;
+      return NextResponse.json(
+        {
+          error: reason,
+          stkStatus: payment.pawa_status,
+          reference: payment.reference,
+        },
+        { status: 400 }
+      );
+    }
+
+    // STK push accepted — prompt is on its way to the customer's phone
     await updateLoan(loan.id, {
       activationFeeStatus: 'pending',
       activationFeeReference: payment.reference,
     });
-
-    const stkAccepted = payment.pawa_status === 'ACCEPTED' || payment.pawa_status === 'PENDING';
 
     return NextResponse.json({
       success: true,
@@ -91,14 +113,12 @@ export async function POST(req: NextRequest) {
       gateway: payment.gateway,
       amount: loan.activationFee,
       currency: country.currency,
-      stkPushSent: stkAccepted,
+      stkPushSent: true,
       stkStatus: payment.pawa_status,
       correspondent: payment.correspondent,
       network: network,
       country: country.country,
-      message: stkAccepted
-        ? `${network} prompt sent to ${normalizedPhone}. Enter your PIN on your phone to complete payment of ${loan.activationFee} ${country.currency}.`
-        : `Payment initiated for ${normalizedPhone}. Check your phone for the prompt.`,
+      message: `${network} prompt sent to ${normalizedPhone}. Enter your PIN on your phone to complete payment of ${loan.activationFee} ${country.currency}.`,
     });
   } catch (e: unknown) {
     if (e instanceof z.ZodError) {

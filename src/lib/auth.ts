@@ -12,27 +12,45 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+        if (!credentials?.email || !credentials?.password) {
+          console.log('[auth] Missing email or password');
+          return null;
+        }
 
         try {
           const user = await findUserByEmail(credentials.email);
           if (!user) {
-            console.log('Login failed: user not found for', credentials.email);
+            console.log(
+              '[auth] User not found for:',
+              credentials.email
+            );
             return null;
           }
 
-          // Check if passwordHash is valid
-          if (!user.passwordHash || !user.passwordHash.startsWith('$2b$')) {
-            console.log('Login failed: invalid hash for', credentials.email, '- hash:', user.passwordHash?.substring(0, 20));
+          // Validate the hash format before comparing
+          if (
+            !user.passwordHash ||
+            !user.passwordHash.startsWith('$2b$') ||
+            user.passwordHash.length < 50
+          ) {
+            console.log(
+              '[auth] Invalid hash format for',
+              credentials.email,
+              '- hash starts with:',
+              user.passwordHash
+                ? user.passwordHash.substring(0, 20)
+                : 'EMPTY'
+            );
             return null;
           }
 
           const valid = await compare(credentials.password, user.passwordHash);
           if (!valid) {
-            console.log('Login failed: password mismatch for', credentials.email);
+            console.log('[auth] Password mismatch for:', credentials.email);
             return null;
           }
 
+          console.log('[auth] Login success for:', credentials.email);
           return {
             id: String(user.id),
             email: user.email,
@@ -41,7 +59,12 @@ export const authOptions: NextAuthOptions = {
             phone: user.phone || undefined,
           };
         } catch (e) {
-          console.log('Login error for', credentials.email, ':', e instanceof Error ? e.message : 'unknown');
+          console.log(
+            '[auth] Error for',
+            credentials.email,
+            ':',
+            e instanceof Error ? e.message : 'unknown'
+          );
           return null;
         }
       },

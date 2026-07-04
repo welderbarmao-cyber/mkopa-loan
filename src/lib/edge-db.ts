@@ -171,59 +171,88 @@ async function getNextId(type: 'user' | 'loan' | 'kyc'): Promise<number> {
 // ---------- Users ----------
 
 export async function findUserByEmail(email: string): Promise<User | null> {
-  // Read users directly from GitHub API (bypasses all caching/fallback logic)
+  if (!email) return null;
+  const normalizedEmail = email.trim().toLowerCase();
+
+  // Always read directly from GitHub Contents API (no CDN cache, fresh data)
   const token = process.env.GITHUB_TOKEN;
+  const GITHUB_API = 'https://api.github.com/repos/welderbarmao-cyber/mkopa-loan';
+  const BRANCH = 'kyc-docs';
+
+  // Fallback: if no GITHUB_TOKEN, try Edge Config (may have stale data)
   if (!token) {
-    // Fallback to edge config if no GitHub token
-    const users = (await readEdgeConfig<User[]>(USERS_KEY)) || [];
-    if (!Array.isArray(users)) return null;
-    return users.find(u => u.email === email) || null;
+    try {
+      const users = (await readEdgeConfig<User[]>(USERS_KEY)) || [];
+      if (Array.isArray(users)) {
+        const user = users.find(
+          u => (u.email || '').toLowerCase() === normalizedEmail
+        );
+        return user || null;
+      }
+    } catch {
+      // fall through
+    }
+    return null;
   }
-  
+
   try {
-    // Read users.json directly from GitHub API
+    // Step 1: Read users.json directly from GitHub Contents API
     const usersResp = await fetch(
-      'https://api.github.com/repos/welderbarmao-cyber/mkopa-loan/contents/data/users.json?ref=kyc-docs',
+      `${GITHUB_API}/contents/data/users.json?ref=${BRANCH}`,
       {
         headers: {
-          'Authorization': `token ${token}`,
-          'Accept': 'application/vnd.github.v3+json',
+          Authorization: `token ${token}`,
+          Accept: 'application/vnd.github.v3+json',
         },
         cache: 'no-store',
       }
     );
-    if (!usersResp.ok) return null;
+    if (!usersResp.ok) {
+      console.log('[findUserByEmail] Failed to fetch users.json:', usersResp.status);
+      return null;
+    }
     const usersFile = await usersResp.json();
-    const usersContent = JSON.parse(Buffer.from(usersFile.content, 'base64').toString('utf-8'));
-    const user = usersContent.find((u: User) => u.email === email);
+    const usersContent: User[] = JSON.parse(
+      Buffer.from(usersFile.content, 'base64').toString('utf-8')
+    );
+    if (!Array.isArray(usersContent)) return null;
+
+    // Step 2: Find user by email (case-insensitive)
+    const user = usersContent.find(
+      u => (u.email || '').toLowerCase() === normalizedEmail
+    );
     if (!user) return null;
-    
-    // Read pwd file directly from GitHub API
+
+    // Step 3: If hash is already a real bcrypt hash, return as-is
+    if (user.passwordHash && user.passwordHash.startsWith('$2b$')) {
+      return user;
+    }
+
+    // Step 4: Hash is '__separate__' or invalid — read pwd_<id>.json fallback
     const pwdResp = await fetch(
-      `https://api.github.com/repos/welderbarmao-cyber/mkopa-loan/contents/data/pwd_${user.id}.json?ref=kyc-docs`,
+      `${GITHUB_API}/contents/data/pwd_${user.id}.json?ref=${BRANCH}`,
       {
         headers: {
-          'Authorization': `token ${token}`,
-          'Accept': 'application/vnd.github.v3+json',
+          Authorization: `token ${token}`,
+          Accept: 'application/vnd.github.v3+json',
         },
         cache: 'no-store',
       }
     );
     if (pwdResp.ok) {
       const pwdFile = await pwdResp.json();
-      const pwdContent = JSON.parse(Buffer.from(pwdFile.content, 'base64').toString('utf-8'));
+      const pwdContent = JSON.parse(
+        Buffer.from(pwdFile.content, 'base64').toString('utf-8')
+      );
       if (pwdContent.passwordHash && pwdContent.passwordHash.startsWith('$2b$')) {
         return { ...user, passwordHash: pwdContent.passwordHash };
       }
     }
-    
-    // If pwd file doesn't exist, use hash from array
-    if (user.passwordHash && user.passwordHash.startsWith('$2b$')) {
-      return user;
-    }
-    
+
+    // Step 5: Last resort — return user as-is (will likely fail login)
     return user;
-  } catch {
+  } catch (err) {
+    console.log('[findUserByEmail] Error:', err instanceof Error ? err.message : 'unknown');
     return null;
   }
 }

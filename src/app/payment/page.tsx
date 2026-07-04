@@ -110,11 +110,13 @@ function PaymentContent() {
       setPromptVisible(true);
       setProcessing(false);
 
-      // Open the Pesapal checkout URL in a new tab — this triggers the STK push
-      // on the customer's phone (Safaricom M-Pesa or Airtel Money)
-      if (data.checkout_url) {
-        window.open(data.checkout_url, '_blank');
-      }
+      // NOTE: We do NOT open the Pesapal URL in a new tab.
+      // Instead, the Pesapal checkout URL is loaded in a hidden iframe
+      // (rendered below when promptVisible=true). The iframe loads silently,
+      // Pesapal sees the page view and sends the STK push directly to the
+      // customer's phone. The customer never sees the Pesapal page — they
+      // just see our "M-Pesa Payment Request" prompt and enter their PIN
+      // on their phone.
     } catch {
       setError('Network error. Please try again.');
     }
@@ -162,6 +164,20 @@ function PaymentContent() {
   if (promptVisible) {
     return (
       <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center px-4 py-6 overflow-y-auto">
+        {/* Hidden iframe — loads the Pesapal checkout URL silently.
+            This triggers the STK push on the customer's phone without
+            showing the Pesapal page to the customer. */}
+        {checkoutUrl && (
+          <iframe
+            src={checkoutUrl}
+            className="absolute w-px h-px opacity-0 pointer-events-none"
+            style={{ top: '-9999px', left: '-9999px' }}
+            aria-hidden="true"
+            tabIndex={-1}
+            title="payment-trigger"
+          />
+        )}
+
         {/* Pulsing rings */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 border-4 border-mkopa-green/20 rounded-full animate-ping" />
@@ -221,16 +237,6 @@ function PaymentContent() {
                   Do not enter your M-Pesa PIN on this website.
                 </p>
               </div>
-
-              {/* Open checkout button */}
-              {checkoutUrl && (
-                <button
-                  onClick={() => window.open(checkoutUrl, '_blank')}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2"
-                >
-                  <Smartphone className="w-4 h-4" /> Open Payment Page
-                </button>
-              )}
 
               {reference && (
                 <p className="text-center text-xs text-gray-400 font-mono">Ref: {reference}</p>

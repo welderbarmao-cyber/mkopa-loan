@@ -25,12 +25,77 @@ function PaymentContent() {
   const [reference, setReference] = useState('');
   const [phoneEditable, setPhoneEditable] = useState(false);
   const autoTriggered = useRef(false);
+  const wakeLockRef = useRef<any>(null);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/login?message=Please sign in to make payment');
     }
   }, [status, router]);
+
+  // ---- Wake Lock: keep the screen on so the customer doesn't miss the STK prompt ----
+  const acquireWakeLock = async () => {
+    try {
+      // @ts-expect-error - wakeLock is not in older TS lib defs
+      if ('wakeLock' in navigator && navigator.wakeLock?.request) {
+        // @ts-expect-error - wakeLock is not in older TS lib defs
+        wakeLockRef.current = await navigator.wakeLock.request('screen');
+      }
+    } catch {
+      // Wake lock denied or unavailable — silently ignore
+    }
+  };
+  const releaseWakeLock = async () => {
+    try {
+      if (wakeLockRef.current) {
+        await wakeLockRef.current.release();
+        wakeLockRef.current = null;
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  // Re-acquire wake lock when tab becomes visible again
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible' && stkSent) acquireWakeLock();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [stkSent]);
+
+  // ---- Notifications API: fire a system notification when STK is sent ----
+  const fireNotification = async (title: string, body: string) => {
+    try {
+      if (!('Notification' in window)) return;
+      // Ask permission if not already granted
+      if (Notification.permission === 'default') {
+        await Notification.requestPermission();
+      }
+      if (Notification.permission === 'granted') {
+        const notif = new Notification(title, {
+          body,
+          tag: 'mkopa-stk-push',
+          requireInteraction: true, // stays in tray until dismissed
+          icon: '/logo.jpg',
+        });
+        // Auto-close after 30 seconds (some browsers ignore this)
+        setTimeout(() => notif.close(), 30000);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  // Request notification permission early when page loads
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      // Ask after a short delay so it doesn't block initial render
+      const t = setTimeout(() => Notification.requestPermission().catch(() => {}), 1500);
+      return () => clearTimeout(t);
+    }
+  }, []);
 
   useEffect(() => {
     if (session?.user && loanId) {
@@ -55,9 +120,11 @@ function PaymentContent() {
         const data = await res.json();
         if (data.status === 'completed') {
           clearInterval(pollInterval);
+          releaseWakeLock();
           router.push('/dashboard');
         } else if (data.status === 'failed') {
           clearInterval(pollInterval);
+          releaseWakeLock();
           setError('Payment was not completed. Please try again.');
           setStkSent(false);
         }
@@ -127,12 +194,33 @@ function PaymentContent() {
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         navigator.vibrate([200, 100, 200, 100, 400]);
       }
+
+      // Keep the screen awake so the customer doesn't miss the STK prompt
+      acquireWakeLock();
+
+      // Fire a system notification (appears in the OS notification tray,
+      // over other apps). This is the closest a website can get to drawing
+      // over other apps — the actual STK PIN dialog is drawn by Safaricom /
+      // Airtel's SIM toolkit, not by us.
+      const amt = loan.activationFee;
+      const cur = data.currency || 'KES';
+      fireNotification(
+        'M-Kopa: Enter your PIN',
+        `A payment prompt for ${amt} ${cur} was sent to ${phone}. Open your phone and enter your M-Pesa / Airtel PIN to confirm.`
+      );
     } catch {
       setError('Network error. Please try again.');
       setPhoneEditable(true);
     }
     setProcessing(false);
   }
+
+  // Release the wake lock when the component unmounts or payment completes
+  useEffect(() => {
+    return () => {
+      releaseWakeLock();
+    };
+  }, []);
 
   if (status === 'loading' || !session || loading) {
     return (

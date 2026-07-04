@@ -12,19 +12,29 @@ const initiateSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    // Auth required — never bypass. We need the session to know WHO is paying
+    // and to confirm the loan belongs to them. Removing this would let anyone
+    // trigger STK pushes against any phone number.
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized — please sign in to continue.' }, { status: 401 });
     }
 
     const userId = parseInt((session.user as { id: string }).id);
     const body = initiateSchema.parse(await req.json());
 
+    // Tolerant user lookup: try by ID first, then by email. This avoids
+    // false "User not found" errors when Edge Config has stale IDs.
     let user = await findUserById(userId);
     if (!user && session.user.email) {
       user = await findUserByEmail(session.user.email);
     }
-    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Account not found. Please sign out and sign back in, then try again.' },
+        { status: 404 }
+      );
+    }
 
     const loan = await findLoanById(body.loanId);
     if (!loan) {

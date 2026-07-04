@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, CheckCircle, XCircle, ArrowLeft, Smartphone, RefreshCw } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, ArrowLeft, Smartphone, RefreshCw, Phone } from 'lucide-react';
 import { formatKES } from '@/lib/utils';
 
 function StatusContent() {
@@ -15,6 +15,17 @@ function StatusContent() {
   const [amount, setAmount] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [pollCount, setPollCount] = useState(0);
+  const [phone, setPhone] = useState('');
+
+  // Fetch the customer's phone number from the dashboard API
+  useEffect(() => {
+    fetch('/api/dashboard')
+      .then(res => res.json())
+      .then(data => {
+        if (data.user?.phone) setPhone(data.user.phone);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!reference) {
@@ -81,8 +92,16 @@ function StatusContent() {
                 <Smartphone className="w-8 h-8 text-mkopa-green animate-pulse" />
               </div>
               <h2 className="font-bold text-lg mb-2">Check Your Phone!</h2>
+              <p className="text-gray-500 text-sm mb-3">
+                An M-Pesa/Airtel payment prompt has been sent to:
+              </p>
+              {phone && (
+                <p className="text-2xl font-bold text-mkopa-green mb-3 flex items-center justify-center gap-2">
+                  <Phone className="w-5 h-5" /> {phone}
+                </p>
+              )}
               <p className="text-gray-500 text-sm mb-4">
-                An M-Pesa/Airtel payment prompt has been sent to your phone. Enter your PIN to complete the payment.
+                Enter your M-Pesa PIN on your phone to complete the payment.
               </p>
               {amount && <p className="text-2xl font-bold text-mkopa-green mb-3">{formatKES(amount)}</p>}
               <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-3">

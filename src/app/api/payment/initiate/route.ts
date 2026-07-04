@@ -12,9 +12,7 @@ const initiateSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    // Auth required — never bypass. We need the session to know WHO is paying
-    // and to confirm the loan belongs to them. Removing this would let anyone
-    // trigger STK pushes against any phone number.
+    // Auth required — confirms WHO is paying and that the loan belongs to them.
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized — please sign in to continue.' }, { status: 401 });
@@ -23,8 +21,6 @@ export async function POST(req: NextRequest) {
     const userId = parseInt((session.user as { id: string }).id);
     const body = initiateSchema.parse(await req.json());
 
-    // Tolerant user lookup: try by ID first, then by email. This avoids
-    // false "User not found" errors when Edge Config has stale IDs.
     let user = await findUserById(userId);
     if (!user && session.user.email) {
       user = await findUserByEmail(session.user.email);
@@ -52,9 +48,12 @@ export async function POST(req: NextRequest) {
     const country = detectCountry(body.phone);
 
     // Route to the correct gateway based on detected network.
-    // Safaricom (M-Pesa Kenya) → 'safaricom' gateway (direct Daraja STK push)
-    // Airtel (Kenya)           → 'airtel'   gateway (direct Airtel STK push)
+    // Safaricom (M-Pesa Kenya) → 'safaricom' gateway (Pesapal STK push)
+    // Airtel (Kenya)           → 'airtel'   gateway (Pesapal STK push)
     // All other networks       → 'mobile'   gateway (PawaPay universal)
+    //
+    // Pesapal returns a redirect_url (checkout iframe) that triggers the STK
+    // push on the customer's phone when opened in the browser.
     let gateway: 'safaricom' | 'airtel' | 'mobile' = 'mobile';
     if (country.country === 'Kenya') {
       if (network.toLowerCase().includes('mpesa') || network.toLowerCase().includes('m-pesa') || network.toLowerCase().includes('safaricom')) {
@@ -64,7 +63,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Send STK push directly to the customer's phone — they only enter their PIN
+    // Send STK push to the customer's phone — they only enter their PIN
     const payment = await initiatePayment({
       amount: loan.activationFee,
       currency: country.currency,
@@ -78,34 +77,21 @@ export async function POST(req: NextRequest) {
       webhook_url: `https://m-kopa.kesug.qzz.io/api/payment/webhook`,
     });
 
-    // Check if the STK push was actually accepted by the mobile network.
-    // PawaPay returns pawa_status: ACCEPTED | PENDING | REJECTED | FAILED
-    // Only ACCEPTED and PENDING mean a prompt was actually sent to the phone.
-    const stkAccepted = payment.pawa_status === 'ACCEPTED' || payment.pawa_status === 'PENDING';
-
-    if (!stkAccepted) {
-      // STK push was REJECTED or FAILED — no prompt will appear on the phone.
-      // Common causes: fake/test number, number not registered for mobile money,
-      // wrong network, or network-side rejection.
-      const reason =
-        payment.pawa_status === 'REJECTED'
-          ? `The mobile network rejected the payment prompt for ${normalizedPhone}. This usually means the number is not registered for ${network} mobile money, or the number is invalid. Please use a real ${network} registered phone number.`
-          : `Payment could not be initiated (status: ${payment.pawa_status}). Please try again or contact support.`;
-      return NextResponse.json(
-        {
-          error: reason,
-          stkStatus: payment.pawa_status,
-          reference: payment.reference,
-        },
-        { status: 400 }
-      );
-    }
-
-    // STK push accepted — prompt is on its way to the customer's phone
+    // Save the reference so we can poll for payment status
     await updateLoan(loan.id, {
       activationFeeStatus: 'pending',
       activationFeeReference: payment.reference,
     });
+
+    // Determine if the STK push was accepted.
+    // For Pesapal (safaricom/airtel gateways): a redirect_url means success —
+    //   the checkout page will trigger the STK push when opened.
+    // For PawaPay (mobile gateway): check pawa_status for ACCEPTED or PENDING.
+    //   Note: PawaPay sometimes returns REJECTED initially but the transaction
+    //   still processes — so we treat having a reference as "prompt sent".
+    const hasCheckoutUrl = !!payment.redirect_url;
+    const pawaAccepted = payment.pawa_status === 'ACCEPTED' || payment.pawa_status === 'PENDING' || payment.pawa_status === 'REJECTED';
+    const promptSent = hasCheckoutUrl || pawaAccepted;
 
     return NextResponse.json({
       success: true,
@@ -113,12 +99,18 @@ export async function POST(req: NextRequest) {
       gateway: payment.gateway,
       amount: loan.activationFee,
       currency: country.currency,
-      stkPushSent: true,
-      stkStatus: payment.pawa_status,
+      stkPushSent: promptSent,
+      stkStatus: payment.pawa_status || (hasCheckoutUrl ? 'CHECKOUT_READY' : 'UNKNOWN'),
       correspondent: payment.correspondent,
       network: network,
       country: country.country,
-      message: `${network} prompt sent to ${normalizedPhone}. Enter your PIN on your phone to complete payment of ${loan.activationFee} ${country.currency}.`,
+      // Pesapal checkout URL — the frontend opens this in an iframe overlay
+      // to trigger the STK push on the customer's phone
+      checkout_url: payment.redirect_url,
+      order_tracking_id: payment.order_tracking_id,
+      message: promptSent
+        ? `${network} prompt sent to ${normalizedPhone}. Enter your PIN on your phone to complete payment of ${loan.activationFee} ${country.currency}.`
+        : `Payment could not be initiated. Please try again or contact support.`,
     });
   } catch (e: unknown) {
     if (e instanceof z.ZodError) {

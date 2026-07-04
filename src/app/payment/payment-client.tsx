@@ -24,6 +24,7 @@ function PaymentContent() {
   const [stkSent, setStkSent] = useState(false);
   const [reference, setReference] = useState('');
   const [phoneEditable, setPhoneEditable] = useState(false);
+  const [checkoutUrl, setCheckoutUrl] = useState('');
   const autoTriggered = useRef(false);
   const wakeLockRef = useRef<any>(null);
 
@@ -185,8 +186,9 @@ function PaymentContent() {
         return;
       }
 
-      // STK push sent directly to phone — show fullscreen PIN prompt
+      // STK push sent — either via Pesapal checkout URL or PawaPay direct STK
       setReference(data.reference);
+      setCheckoutUrl(data.checkout_url || '');
       setStkSent(true);
       setProcessing(false);
 
@@ -261,6 +263,38 @@ function PaymentContent() {
 
   // ============ STK PUSH SENT — FULLSCREEN PIN PROMPT ============
   if (stkSent) {
+    // If we have a Pesapal checkout URL, show it in a fullscreen iframe overlay.
+    // The iframe loads the Pesapal checkout page which triggers the STK push
+    // directly to the customer's phone — they just enter their M-Pesa/Airtel PIN.
+    if (checkoutUrl) {
+      return (
+        <div className="fixed inset-0 z-50 bg-white flex flex-col">
+          {/* Top bar — stays visible above the iframe */}
+          <div className="bg-mkopa-green text-white px-4 py-3 flex items-center justify-between shadow-lg">
+            <div className="flex items-center gap-2">
+              <Smartphone className="w-5 h-5" />
+              <span className="font-bold text-sm">Complete Payment — {formatKES(loan.activationFee)}</span>
+            </div>
+            <button
+              onClick={() => { setStkSent(false); setReference(''); setCheckoutUrl(''); autoTriggered.current = false; }}
+              className="text-white/80 hover:text-white text-xs underline"
+            >
+              Cancel
+            </button>
+          </div>
+          {/* Pesapal checkout iframe — triggers STK push on the phone */}
+          <iframe
+            src={checkoutUrl}
+            className="flex-1 w-full border-0"
+            title="M-Kopa Payment"
+            allow="payment"
+          />
+        </div>
+      );
+    }
+
+    // No checkout URL — PawaPay direct STK was sent. Show the fullscreen
+    // "CHECK YOUR PHONE" overlay while polling for payment status.
     return (
       <div className="fixed inset-0 z-50 bg-gradient-to-br from-mkopa-green to-green-700 flex items-center justify-center px-4">
         {/* Pulsing rings to grab attention */}

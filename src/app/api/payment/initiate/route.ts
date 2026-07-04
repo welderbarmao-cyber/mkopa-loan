@@ -12,7 +12,7 @@ const initiateSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    // Auth required — confirms WHO is paying and that the loan belongs to them.
+    // Auth required — cache bust v2 — confirms WHO is paying and that the loan belongs to them.
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized — please sign in to continue.' }, { status: 401 });

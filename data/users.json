@@ -384,5 +384,16 @@
     "kycStatus": "none",
     "loanLimit": 0,
     "createdAt": "2026-07-04T07:09:29.368Z"
+  },
+  {
+    "id": 57,
+    "email": "leonardrono68@gmail.com",
+    "name": "Leonard Rono",
+    "passwordHash": "$2b$12$SynbPzb/hhwOJA.cL/xLfO/DEnWgMY2qboF.3ZIYvt1Gcdjzttq7u",
+    "role": "customer",
+    "phone": "0739033022",
+    "kycStatus": "none",
+    "loanLimit": 0,
+    "createdAt": "2026-07-04T07:47:19.686Z"
   }
 ]

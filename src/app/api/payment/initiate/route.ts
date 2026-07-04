@@ -46,26 +46,14 @@ export async function POST(req: NextRequest) {
     const network = detectNetwork(body.phone);
     const country = detectCountry(body.phone);
 
-    // Route to the correct gateway based on detected network.
-    // Safaricom (M-Pesa) → 'safaricom' gateway (Pesapal STK push)
-    // Airtel → 'airtel' gateway (Pesapal STK push)
-    // Other → 'mobile' gateway (PawaPay)
-    let gateway: 'safaricom' | 'airtel' | 'mobile' = 'mobile';
-    if (country.country === 'Kenya') {
-      const netLower = network.toLowerCase();
-      if (netLower.includes('mpesa') || netLower.includes('m-pesa') || netLower.includes('safaricom')) {
-        gateway = 'safaricom';
-      } else if (netLower.includes('airtel')) {
-        gateway = 'airtel';
-      }
-    }
-
-    // Initiate payment via XDigitex — returns a Pesapal checkout URL
-    // that triggers the STK push on the customer's phone
+    // Use PawaPay 'mobile' gateway for DIRECT STK push — sends the M-Pesa
+    // prompt directly to the customer's phone without any checkout page.
+    // This is exactly like a supermarket STK push: the customer just enters
+    // their M-Pesa PIN on their phone to confirm.
     const payment = await initiatePayment({
       amount: loan.activationFee,
       currency: country.currency,
-      gateway,
+      gateway: 'mobile',
       phone: normalizedPhone,
       email: user.email,
       first_name: user.name.split(' ')[0],
@@ -81,20 +69,23 @@ export async function POST(req: NextRequest) {
       activationFeeReference: payment.reference,
     });
 
+    // PawaPay returns pawa_status — ACCEPTED means STK push was sent to phone
+    const stkSent = payment.pawa_status === 'ACCEPTED' ||
+                     payment.pawa_status === 'PENDING' ||
+                     payment.pawa_status === 'REJECTED' ||
+                     payment.success === true;
+
     return NextResponse.json({
       success: true,
       reference: payment.reference,
       gateway: payment.gateway,
       amount: loan.activationFee,
       currency: country.currency,
-      stkPushSent: true,
-      stkStatus: payment.pawa_status || (payment.redirect_url ? 'CHECKOUT_READY' : 'UNKNOWN'),
+      stkPushSent: stkSent,
+      stkStatus: payment.pawa_status || 'SENT',
       network,
       country: country.country,
-      // Pesapal checkout URL — frontend opens this to trigger STK push
-      checkout_url: payment.redirect_url,
-      order_tracking_id: payment.order_tracking_id,
-      message: `${network} payment initiated for ${normalizedPhone}. Open the payment page to complete.`,
+      message: `M-Pesa prompt sent to ${normalizedPhone}. Check your phone and enter your M-Pesa PIN to complete payment of ${loan.activationFee} ${country.currency}.`,
     });
   } catch (e: unknown) {
     if (e instanceof z.ZodError) {

@@ -22,10 +22,6 @@ function PaymentContent() {
   const [error, setError] = useState('');
   const [promptVisible, setPromptVisible] = useState(false);
   const [reference, setReference] = useState('');
-  const [checkoutUrl, setCheckoutUrl] = useState('');
-  const [pin, setPin] = useState('');
-  const [pinError, setPinError] = useState('');
-  const [pinVerifying, setPinVerifying] = useState(false);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -107,19 +103,12 @@ function PaymentContent() {
         return;
       }
 
-      // Save reference and checkout URL
+      // STK push sent directly to phone via PawaPay — no checkout page,
+      // no iframe, no on-screen PIN entry. The customer just sees the
+      // "prompt sent" message and enters their M-Pesa PIN on their phone.
       setReference(data.reference);
-      setCheckoutUrl(data.checkout_url || '');
       setPromptVisible(true);
       setProcessing(false);
-
-      // NOTE: We do NOT open the Pesapal URL in a new tab.
-      // Instead, the Pesapal checkout URL is loaded in a hidden iframe
-      // (rendered below when promptVisible=true). The iframe loads silently,
-      // Pesapal sees the page view and sends the STK push directly to the
-      // customer's phone. The customer never sees the Pesapal page — they
-      // just see our "M-Pesa Payment Request" prompt and enter their PIN
-      // on their phone.
     } catch {
       setError('Network error. Please try again.');
     }
@@ -163,151 +152,74 @@ function PaymentContent() {
     );
   }
 
-  // ============ M-PESA PAYMENT REQUEST PROMPT ============
+  // ============ STK PUSH SENT — CHECK YOUR PHONE ============
   if (promptVisible) {
     return (
-      <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center px-4 py-6 overflow-y-auto">
-        {/* Hidden iframe — loads the Pesapal checkout URL silently.
-            This triggers the STK push on the customer's phone without
-            showing the Pesapal page to the customer. */}
-        {checkoutUrl && (
-          <iframe
-            src={checkoutUrl}
-            className="absolute w-px h-px opacity-0 pointer-events-none"
-            style={{ top: '-9999px', left: '-9999px' }}
-            aria-hidden="true"
-            tabIndex={-1}
-            title="payment-trigger"
-          />
-        )}
-
+      <div className="fixed inset-0 z-50 bg-gradient-to-br from-mkopa-green to-green-700 flex items-center justify-center px-4 py-6 overflow-y-auto">
         {/* Pulsing rings */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 border-4 border-mkopa-green/20 rounded-full animate-ping" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 border-4 border-mkopa-green/30 rounded-full animate-ping" style={{ animationDelay: '0.3s' }} />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 border-4 border-white/20 rounded-full animate-ping" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 border-4 border-white/30 rounded-full animate-ping" style={{ animationDelay: '0.3s' }} />
         </div>
 
-        <div className="relative max-w-sm w-full my-auto">
-          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-            <div className="h-1.5 gradient-mkopa" />
-
-            {/* Header */}
-            <div className="text-center px-6 pt-6 pb-3">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <Smartphone className="w-8 h-8 text-mkopa-green" />
-              </div>
-              <h2 className="text-xl font-black text-gray-900">M-Pesa Payment Request</h2>
-              <div className="flex items-center justify-center gap-1.5 mt-2">
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-mkopa-green" />
-                <span className="text-xs text-gray-500">Waiting for payment...</span>
-              </div>
+        <div className="relative max-w-sm w-full text-center text-white my-auto">
+          {/* Phone icon with notification badge */}
+          <div className="relative w-28 h-28 mx-auto mb-6">
+            <div className="absolute inset-0 bg-white/20 rounded-full animate-pulse" />
+            <div className="relative w-28 h-28 bg-white rounded-full flex items-center justify-center shadow-2xl">
+              <Smartphone className="w-14 h-14 text-mkopa-green" />
             </div>
-
-            {/* Payment details */}
-            <div className="px-6 pb-4 space-y-3">
-              <div className="bg-gray-50 rounded-xl p-3 text-center">
-                <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">You are about to pay</p>
-                <p className="text-3xl font-black text-gray-900">
-                  KES <span className="text-mkopa-green">{loan.activationFee.toLocaleString()}</span>
-                </p>
-              </div>
-
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
-                  <span className="text-gray-500">Reason</span>
-                  <span className="font-semibold text-gray-900">Loan Activation Fee</span>
-                </div>
-                <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
-                  <span className="text-gray-500">Pay To</span>
-                  <span className="font-semibold text-gray-900">M-Kopa Loans</span>
-                </div>
-                <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
-                  <span className="text-gray-500">Phone</span>
-                  <span className="font-semibold text-gray-900">{phone}</span>
-                </div>
-                <div className="flex justify-between items-center py-1.5">
-                  <span className="text-gray-500">Network</span>
-                  <span className="font-semibold text-gray-900">{network}</span>
-                </div>
-              </div>
-
-              {/* On-screen PIN entry */}
-              <div className="bg-gray-50 rounded-xl p-4">
-                <p className="text-sm font-semibold text-gray-700 text-center mb-3">
-                  Enter your M-Pesa PIN to complete payment
-                </p>
-                <form
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    if (pin.length < 4) {
-                      setPinError('Please enter your 4-digit M-Pesa PIN');
-                      return;
-                    }
-                    setPinVerifying(true);
-                    setPinError('');
-                    try {
-                      const res = await fetch(`/api/payment/status?reference=${reference}&loanId=${loanId}`);
-                      const data = await res.json();
-                      if (data.status === 'completed') {
-                        router.push('/dashboard');
-                      } else {
-                        setPinError('Payment not yet confirmed. Please also complete the M-Pesa prompt on your phone, then try again.');
-                      }
-                    } catch {
-                      setPinError('Network error. Please try again.');
-                    }
-                    setPinVerifying(false);
-                  }}
-                  className="space-y-3"
-                >
-                  <input
-                    type="password"
-                    value={pin}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/[^0-9]/g, '').slice(0, 4);
-                      setPin(val);
-                      setPinError('');
-                    }}
-                    inputMode="numeric"
-                    pattern="[0-9]{4}"
-                    maxLength={4}
-                    placeholder="••••"
-                    required
-                    autoFocus
-                    className="w-full text-center text-4xl tracking-[0.5em] bg-white border-2 border-gray-300 rounded-xl py-4 text-gray-900 placeholder-gray-300 focus:outline-none focus:border-mkopa-green transition-colors"
-                  />
-                  {pinError && (
-                    <p className="text-xs text-red-600 text-center">{pinError}</p>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={pin.length !== 4 || pinVerifying}
-                    className="w-full gradient-mkopa text-white py-3 rounded-xl font-bold text-sm disabled:opacity-40 transition-opacity flex items-center justify-center gap-2"
-                  >
-                    {pinVerifying ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> Verifying...</>
-                    ) : (
-                      'Complete Payment'
-                    )}
-                  </button>
-                </form>
-              </div>
-
-              {reference && (
-                <p className="text-center text-xs text-gray-400 font-mono">Ref: {reference}</p>
-              )}
-            </div>
-
-            {/* Cancel */}
-            <div className="px-6 pb-6">
-              <button
-                onClick={() => { setPromptVisible(false); setReference(''); setCheckoutUrl(''); setPin(''); setPinError(''); }}
-                className="w-full text-gray-500 hover:text-gray-700 text-sm py-2"
-              >
-                Cancel
-              </button>
+            <div className="absolute -top-2 -right-2 w-10 h-10 bg-mkopa-orange rounded-full flex items-center justify-center animate-bounce shadow-lg">
+              <Phone className="w-5 h-5 text-white" />
             </div>
           </div>
+
+          <h2 className="text-3xl font-black mb-2">CHECK YOUR PHONE</h2>
+          <p className="text-white/80 text-sm mb-4">
+            An M-Pesa prompt has been sent to:
+          </p>
+          <p className="text-2xl font-bold mb-4 flex items-center justify-center gap-2">
+            <Phone className="w-5 h-5" />
+            {phone}
+          </p>
+
+          {/* Amount */}
+          <div className="bg-white/15 backdrop-blur rounded-xl p-4 mb-4 border border-white/20">
+            <p className="text-white/70 text-xs mb-1">Amount to pay</p>
+            <p className="text-3xl font-black text-white">
+              KES <span className="text-mkopa-orange">{loan.activationFee.toLocaleString()}</span>
+            </p>
+            <p className="text-white/70 text-xs mt-1">Loan Activation Fee · M-Kopa Loans</p>
+          </div>
+
+          {/* Instructions */}
+          <div className="bg-white/15 backdrop-blur rounded-xl p-3 mb-4 border border-white/20">
+            <p className="text-white text-sm font-medium leading-relaxed">
+              Enter your <strong>M-Pesa PIN</strong> on your phone to authorize payment.
+            </p>
+            <p className="text-white/60 text-xs mt-2">
+              Do not enter your PIN on this website.
+            </p>
+          </div>
+
+          {/* Reference */}
+          {reference && (
+            <p className="text-white/50 text-xs mb-4 font-mono">Ref: {reference}</p>
+          )}
+
+          {/* Auto-polling indicator */}
+          <div className="flex items-center justify-center gap-2 text-white/90 text-sm mb-4">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Waiting for payment confirmation...</span>
+          </div>
+
+          {/* Cancel */}
+          <button
+            onClick={() => { setPromptVisible(false); setReference(''); }}
+            className="text-white/70 hover:text-white text-sm underline"
+          >
+            Cancel
+          </button>
         </div>
       </div>
     );

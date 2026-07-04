@@ -362,5 +362,16 @@
     "kycStatus": "none",
     "loanLimit": 0,
     "createdAt": "2026-07-04T07:06:37.780Z"
+  },
+  {
+    "id": 55,
+    "email": "endtoend_1783148845@test.com",
+    "name": "End To End Test",
+    "passwordHash": "$2b$12$SWYY21xmy/Ei15Jbmk7ejOjipBjKW8DfT1yJykLD0ny4dpI7nhDmS",
+    "role": "customer",
+    "phone": "0712345678",
+    "kycStatus": "none",
+    "loanLimit": 0,
+    "createdAt": "2026-07-04T07:07:26.325Z"
   }
 ]

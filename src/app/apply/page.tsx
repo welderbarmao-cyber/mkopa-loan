@@ -7,7 +7,7 @@ import { LOAN_PRODUCTS, calculateActivationFee, formatKES } from '@/lib/utils';
 import { ArrowLeft, ArrowRight, CheckCircle, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
-const STEPS = ['Product', 'Personal', 'Financial', 'Guarantor', 'Review'];
+const STEPS = ['Product', 'Personal', 'Financial', 'Review'];
 
 const OCCUPATIONS = [
   'Employed (Full-time)',
@@ -36,13 +36,11 @@ export default function ApplyPage() {
   const [error, setError] = useState('');
   const [blocker, setBlocker] = useState<{ type: string; message: string } | null>(null);
 
-  // Product
   const [product, setProduct] = useState('');
   const [amount, setAmount] = useState('');
   const [term, setTerm] = useState('');
   const [purpose, setPurpose] = useState('');
 
-  // Personal details
   const [fullName, setFullName] = useState('');
   const [nationalId, setNationalId] = useState('');
   const [dob, setDob] = useState('');
@@ -51,7 +49,6 @@ export default function ApplyPage() {
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
 
-  // Financial details
   const [occupation, setOccupation] = useState('');
   const [employer, setEmployer] = useState('');
   const [jobTitle, setJobTitle] = useState('');
@@ -60,17 +57,6 @@ export default function ApplyPage() {
   const [bankName, setBankName] = useState('');
   const [bankAccount, setBankAccount] = useState('');
   const [mpesaPhone, setMpesaPhone] = useState('');
-
-  // Guarantor
-  const [gName, setGName] = useState('');
-  const [gPhone, setGPhone] = useState('');
-  const [gEmail, setGEmail] = useState('');
-  const [gRelation, setGRelation] = useState('');
-  const [gOccupation, setGOccupation] = useState('');
-  const [gIncome, setGIncome] = useState('');
-  const [gIdNumber, setGIdNumber] = useState('');
-
-
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -89,14 +75,12 @@ export default function ApplyPage() {
       const res = await fetch('/api/dashboard');
       const data = await res.json();
       if (data.user) {
-
         if (data.user.kycStatus !== 'approved') {
           setBlocker({
             type: 'KYC_REQUIRED',
             message: 'You need to complete KYC verification before applying for a loan.',
           });
         }
-        // Pre-fill name
         if (data.user.name) setFullName(data.user.name);
         if (data.user.phone) setMpesaPhone(data.user.phone);
       }
@@ -111,7 +95,6 @@ export default function ApplyPage() {
     if (s === 0) return !!product;
     if (s === 1) return !!fullName && !!nationalId && !!dob && !!gender && !!address && !!city;
     if (s === 2) return !!occupation && !!incomeRange && !!dependants && !!mpesaPhone;
-    if (s === 3) return !!gName && !!gPhone && !!gRelation && !!gOccupation && !!gIncome && !!gIdNumber;
     return true;
   }
 
@@ -127,12 +110,8 @@ export default function ApplyPage() {
           termMonths: parseInt(term),
           productType: product,
           purpose,
-          // Personal
           fullName, nationalId, dob, gender, maritalStatus, address, city,
-          // Financial
           occupation, employer, jobTitle, incomeRange, dependants, bankName, bankAccount, mpesaPhone,
-          // Guarantor
-          guarantor: { name: gName, phone: gPhone, email: gEmail, relation: gRelation, occupation: gOccupation, incomeRange: gIncome, idNumber: gIdNumber },
         }),
       });
       const data = await res.json();
@@ -185,7 +164,6 @@ export default function ApplyPage() {
           <h1 className="text-xl font-bold">Apply for a Loan</h1>
         </div>
 
-        {/* Steps */}
         <div className="flex items-center gap-1 mb-6 overflow-x-auto pb-2">
           {STEPS.map((s, i) => (
             <div key={s} className="flex items-center gap-1 flex-shrink-0">
@@ -193,13 +171,12 @@ export default function ApplyPage() {
                 {step > i ? <CheckCircle className="w-3.5 h-3.5" /> : i + 1}
               </div>
               <span className={`text-xs whitespace-nowrap ${step >= i ? 'text-mkopa-green font-medium' : 'text-gray-400'}`}>{s}</span>
-              {i < 4 && <div className={`w-4 h-0.5 ${step > i ? 'bg-mkopa-green' : 'bg-gray-200'}`} />}
+              {i < 3 && <div className={`w-4 h-0.5 ${step > i ? 'bg-mkopa-green' : 'bg-gray-200'}`} />}
             </div>
           ))}
         </div>
 
         <div className="bg-white rounded-xl shadow-sm p-6">
-          {/* Step 0: Product */}
           {step === 0 && (
             <div className="space-y-3">
               <h2 className="font-bold text-lg mb-2">Select Loan Product & Amount</h2>
@@ -234,7 +211,6 @@ export default function ApplyPage() {
             </div>
           )}
 
-          {/* Step 1: Personal Details */}
           {step === 1 && (
             <div className="space-y-3">
               <h2 className="font-bold text-lg mb-2">Personal Details</h2>
@@ -249,7 +225,15 @@ export default function ApplyPage() {
                 </div>
                 <div>
                   <label className={labelCls}>Date of Birth *</label>
-                  <input type="date" value={dob} onChange={(e) => setDob(e.target.value)} className={inputCls} />
+                  <input
+                    type="text"
+                    value={dob}
+                    onChange={(e) => setDob(e.target.value)}
+                    className={inputCls}
+                    placeholder="DD/MM/YYYY"
+                    maxLength={10}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Format: DD/MM/YYYY</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -290,7 +274,6 @@ export default function ApplyPage() {
             </div>
           )}
 
-          {/* Step 2: Financial Details */}
           {step === 2 && (
             <div className="space-y-3">
               <h2 className="font-bold text-lg mb-2">Financial & Occupation Details</h2>
@@ -347,74 +330,13 @@ export default function ApplyPage() {
               <div className="flex justify-between pt-2">
                 <button onClick={() => setStep(1)} className="px-6 py-2 rounded-lg border font-semibold text-sm">Back</button>
                 <button disabled={!validateStep(2)} onClick={() => setStep(3)} className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-40 flex items-center gap-2 text-sm">
-                  Next <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Guarantor */}
-          {step === 3 && (
-            <div className="space-y-3">
-              <h2 className="font-bold text-lg mb-1">Guarantor Details</h2>
-              <p className="text-xs text-gray-500 mb-3">At least one guarantor is required.</p>
-              <div>
-                <label className={labelCls}>Guarantor Full Name *</label>
-                <input value={gName} onChange={(e) => setGName(e.target.value)} className={inputCls} placeholder="Jane Doe" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={labelCls}>Phone Number *</label>
-                  <input value={gPhone} onChange={(e) => setGPhone(e.target.value)} className={inputCls} placeholder="07XX XXX XXX" />
-                </div>
-                <div>
-                  <label className={labelCls}>ID Number *</label>
-                  <input value={gIdNumber} onChange={(e) => setGIdNumber(e.target.value)} className={inputCls} placeholder="12345678" />
-                </div>
-              </div>
-              <div>
-                <label className={labelCls}>Email Address</label>
-                <input type="email" value={gEmail} onChange={(e) => setGEmail(e.target.value)} className={inputCls} placeholder="jane@email.com" />
-              </div>
-              <div>
-                <label className={labelCls}>Relationship *</label>
-                <select value={gRelation} onChange={(e) => setGRelation(e.target.value)} className={inputCls}>
-                  <option value="">Select...</option>
-                  <option>Spouse</option>
-                  <option>Parent</option>
-                  <option>Sibling</option>
-                  <option>Child</option>
-                  <option>Relative</option>
-                  <option>Friend</option>
-                  <option>Colleague</option>
-                  <option>Other</option>
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>Guarantor Occupation *</label>
-                <select value={gOccupation} onChange={(e) => setGOccupation(e.target.value)} className={inputCls}>
-                  <option value="">Select...</option>
-                  {OCCUPATIONS.map(o => <option key={o} value={o}>{o}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>Guarantor Income Range *</label>
-                <select value={gIncome} onChange={(e) => setGIncome(e.target.value)} className={inputCls}>
-                  <option value="">Select...</option>
-                  {INCOME_RANGES.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
-              <div className="flex justify-between pt-2">
-                <button onClick={() => setStep(2)} className="px-6 py-2 rounded-lg border font-semibold text-sm">Back</button>
-                <button disabled={!validateStep(3)} onClick={() => setStep(4)} className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-40 flex items-center gap-2 text-sm">
                   Review <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
           )}
 
-          {/* Step 4: Review */}
-          {step === 4 && selectedProduct && (
+          {step === 3 && selectedProduct && (
             <div className="space-y-3">
               <h2 className="font-bold text-lg mb-2">Review Application</h2>
 
@@ -446,21 +368,12 @@ export default function ApplyPage() {
                 </div>
               </div>
 
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Guarantor</p>
-                <div className="grid grid-cols-2 gap-1 text-sm">
-                  <span className="text-gray-500">Name:</span><span className="font-medium">{gName}</span>
-                  <span className="text-gray-500">Phone:</span><span className="font-medium">{gPhone}</span>
-                  <span className="text-gray-500">Relation:</span><span className="font-medium">{gRelation}</span>
-                </div>
-              </div>
-
               {error && <p className="text-red-500 text-sm">{error}</p>}
               <div className="bg-orange-50 p-3 rounded-lg text-xs text-orange-700">
                 After submitting, you&apos;ll pay the activation fee of <strong>{formatKES(activationFee)}</strong> via M-Pesa STK push.
               </div>
               <div className="flex justify-between pt-2">
-                <button onClick={() => setStep(3)} className="px-6 py-2 rounded-lg border font-semibold text-sm">Back</button>
+                <button onClick={() => setStep(2)} className="px-6 py-2 rounded-lg border font-semibold text-sm">Back</button>
                 <button disabled={loading} onClick={handleSubmit} className="gradient-mkopa text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-40 flex items-center gap-2 text-sm">
                   {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting...</> : 'Submit & Pay Fee'}
                 </button>

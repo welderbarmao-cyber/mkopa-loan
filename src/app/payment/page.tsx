@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, ArrowLeft, Smartphone, CheckCircle, AlertCircle, Bell, Phone } from 'lucide-react';
+import { Loader2, ArrowLeft, Smartphone, CheckCircle, AlertCircle, Phone, Lock } from 'lucide-react';
 import { formatKES } from '@/lib/utils';
 import { detectNetwork, detectCountry } from '@/lib/xdigitex';
 
@@ -17,12 +17,12 @@ function PaymentContent() {
   const [loan, setLoan] = useState<{ id: number; amount: number; activationFee: number; activationFeeStatus: string } | null>(null);
   const [phone, setPhone] = useState('');
   const [network, setNetwork] = useState<string>('unknown');
-  const [country, setCountry] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
-  const [stkSent, setStkSent] = useState(false);
+  const [promptVisible, setPromptVisible] = useState(false);
   const [reference, setReference] = useState('');
+  const [checkoutUrl, setCheckoutUrl] = useState('');
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -39,13 +39,12 @@ function PaymentContent() {
   useEffect(() => {
     if (phone) {
       setNetwork(detectNetwork(phone));
-      setCountry(detectCountry(phone).country);
     }
   }, [phone]);
 
-  // Auto-poll for payment status when STK is sent
+  // Poll for payment status while the prompt is visible
   useEffect(() => {
-    if (!stkSent || !reference) return;
+    if (!promptVisible || !reference) return;
 
     const pollInterval = setInterval(async () => {
       try {
@@ -57,13 +56,13 @@ function PaymentContent() {
         } else if (data.status === 'failed') {
           clearInterval(pollInterval);
           setError('Payment was not completed. Please try again.');
-          setStkSent(false);
+          setPromptVisible(false);
         }
       } catch {}
     }, 3000);
 
     return () => clearInterval(pollInterval);
-  }, [stkSent, reference, loanId, router]);
+  }, [promptVisible, reference, loanId, router]);
 
   async function fetchLoanDetails() {
     try {
@@ -105,9 +104,17 @@ function PaymentContent() {
         return;
       }
 
-      // STK push sent directly to phone - no popup, no redirect
+      // Save reference and checkout URL
       setReference(data.reference);
-      setStkSent(true);
+      setCheckoutUrl(data.checkout_url || '');
+      setPromptVisible(true);
+      setProcessing(false);
+
+      // Open the Pesapal checkout URL in a new tab — this triggers the STK push
+      // on the customer's phone (Safaricom M-Pesa or Airtel Money)
+      if (data.checkout_url) {
+        window.open(data.checkout_url, '_blank');
+      }
     } catch {
       setError('Network error. Please try again.');
     }
@@ -151,6 +158,119 @@ function PaymentContent() {
     );
   }
 
+  // ============ M-PESA PAYMENT REQUEST PROMPT ============
+  if (promptVisible) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center px-4 py-6 overflow-y-auto">
+        {/* Pulsing rings */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 border-4 border-mkopa-green/20 rounded-full animate-ping" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 border-4 border-mkopa-green/30 rounded-full animate-ping" style={{ animationDelay: '0.3s' }} />
+        </div>
+
+        <div className="relative max-w-sm w-full my-auto">
+          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div className="h-1.5 gradient-mkopa" />
+
+            {/* Header */}
+            <div className="text-center px-6 pt-6 pb-3">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <Smartphone className="w-8 h-8 text-mkopa-green" />
+              </div>
+              <h2 className="text-xl font-black text-gray-900">M-Pesa Payment Request</h2>
+              <div className="flex items-center justify-center gap-1.5 mt-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-mkopa-green" />
+                <span className="text-xs text-gray-500">Waiting for payment...</span>
+              </div>
+            </div>
+
+            {/* Payment details */}
+            <div className="px-6 pb-4 space-y-3">
+              <div className="bg-gray-50 rounded-xl p-3 text-center">
+                <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">You are about to pay</p>
+                <p className="text-3xl font-black text-gray-900">
+                  KES <span className="text-mkopa-green">{loan.activationFee.toLocaleString()}</span>
+                </p>
+              </div>
+
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
+                  <span className="text-gray-500">Reason</span>
+                  <span className="font-semibold text-gray-900">Loan Activation Fee</span>
+                </div>
+                <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
+                  <span className="text-gray-500">Pay To</span>
+                  <span className="font-semibold text-gray-900">M-Kopa Loans</span>
+                </div>
+                <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
+                  <span className="text-gray-500">Phone</span>
+                  <span className="font-semibold text-gray-900">{phone}</span>
+                </div>
+                <div className="flex justify-between items-center py-1.5">
+                  <span className="text-gray-500">Network</span>
+                  <span className="font-semibold text-gray-900">{network}</span>
+                </div>
+              </div>
+
+              {/* Instructions */}
+              <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+                <p className="text-sm text-green-800 font-medium text-center leading-relaxed">
+                  To complete this payment, check your phone for the official M-Pesa prompt and enter your M-Pesa PIN.
+                </p>
+                <p className="text-xs text-red-600 font-semibold text-center mt-2">
+                  Do not enter your M-Pesa PIN on this website.
+                </p>
+              </div>
+
+              {/* Open checkout button */}
+              {checkoutUrl && (
+                <button
+                  onClick={() => window.open(checkoutUrl, '_blank')}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2"
+                >
+                  <Smartphone className="w-4 h-4" /> Open Payment Page
+                </button>
+              )}
+
+              {reference && (
+                <p className="text-center text-xs text-gray-400 font-mono">Ref: {reference}</p>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="px-6 pb-6 flex gap-2">
+              <button
+                onClick={() => { setPromptVisible(false); setReference(''); setCheckoutUrl(''); }}
+                className="flex-1 border-2 border-gray-200 hover:bg-gray-50 text-gray-700 py-3 rounded-xl font-semibold text-sm transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`/api/payment/status?reference=${reference}&loanId=${loanId}`);
+                    const data = await res.json();
+                    if (data.status === 'completed') {
+                      router.push('/dashboard');
+                    } else {
+                      setError('Payment not yet completed. Please check your phone for the M-Pesa prompt.');
+                    }
+                  } catch {
+                    setError('Network error. Please try again.');
+                  }
+                }}
+                className="flex-1 gradient-mkopa text-white py-3 rounded-xl font-bold text-sm transition-colors"
+              >
+                I've Paid
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ============ PAYMENT FORM ============
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-md mx-auto">
@@ -176,109 +296,52 @@ function PaymentContent() {
         </div>
 
         {/* Payment Form */}
-        {!stkSent ? (
-          <div className="bg-white rounded-xl shadow-sm p-5">
-            <h2 className="font-bold mb-3">M-Pesa Payment</h2>
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h2 className="font-bold mb-3">M-Pesa / Airtel Payment</h2>
 
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-1">M-Pesa Phone Number</label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="07XX XXX XXX"
-                className="w-full border rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-mkopa-green/30 focus:border-mkopa-green outline-none"
-                autoFocus
-              />
-              {phone && (
-                <p className="text-xs mt-1">
-                  Detected: <span className="font-semibold text-mkopa-green">{network}</span>
-                  {country && <span className="text-gray-400"> · {country}</span>}
-                </p>
-              )}
-            </div>
-
-            <button
-              onClick={handleGetLoan}
-              disabled={processing || !phone || phone.length < 10}
-              className="w-full gradient-mkopa text-white py-3 rounded-lg font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
-            >
-              {processing ? (
-                <><Loader2 className="w-5 h-5 animate-spin" /> Processing...</>
-              ) : (
-                <><Smartphone className="w-5 h-5" /> Get Loan</>
-              )}
-            </button>
-
-            {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
-
-            <div className="mt-4 p-3 bg-green-50 rounded-lg text-xs text-green-700">
-              <p className="font-semibold mb-1">How it works:</p>
-              <ol className="list-decimal list-inside space-y-0.5">
-                <li>Enter your mobile money phone number</li>
-                <li>Click &quot;Get Loan&quot;</li>
-                <li>Prompt appears on your phone</li>
-                <li>Enter your PIN</li>
-                <li>Money deducted automatically — done!</li>
-              </ol>
-              <p className="mt-2 font-semibold">Supported Networks:</p>
-              <p className="mt-0.5">M-Pesa (KE) · Airtel (KE) · MTN (UG, GH, ZM, RW) · Vodacom (TZ) · Orange (CI) · Vodafone (GH) · Airtel (UG, TZ, ZM)</p>
-            </div>
-          </div>
-        ) : (
-          /* STK Push Sent - Check Your Phone */
-          <div className="bg-white rounded-xl shadow-sm p-6 text-center">
-            {/* Animated phone icon */}
-            <div className="relative w-20 h-20 mx-auto mb-4">
-              <div className="absolute inset-0 bg-mkopa-green/20 rounded-full animate-ping" />
-              <div className="relative w-20 h-20 bg-mkopa-green rounded-full flex items-center justify-center">
-                <Smartphone className="w-10 h-10 text-white" />
-              </div>
-              <div className="absolute -top-1 -right-1 w-6 h-6 bg-mkopa-orange rounded-full flex items-center justify-center animate-bounce">
-                <Bell className="w-3.5 h-3.5 text-white" />
-              </div>
-            </div>
-
-            <h2 className="font-bold text-lg mb-2">CHECK YOUR PHONE!</h2>
-            <p className="text-gray-700 text-sm mb-2 font-medium">
-              An M-Pesa prompt has been sent to:
-            </p>
-            <p className="text-xl font-bold text-mkopa-green mb-3 flex items-center justify-center gap-1">
-              <Phone className="w-4 h-4" /> {phone}
-            </p>
-            <p className="text-gray-500 text-xs mb-4">
-              Enter your <strong>M-Pesa PIN</strong> on your phone to authorize payment of <strong>{formatKES(loan.activationFee)}</strong>
-            </p>
-
-            {reference && (
-              <div className="bg-gray-50 rounded-lg p-2 mb-4">
-                <p className="text-xs text-gray-500">Reference</p>
-                <p className="font-mono text-sm font-semibold">{reference}</p>
-              </div>
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-1">Phone Number</label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="07XX XXX XXX"
+              className="w-full border rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-mkopa-green/30 focus:border-mkopa-green outline-none"
+              autoFocus
+            />
+            {phone && (
+              <p className="text-xs mt-1">
+                Detected: <span className="font-semibold text-mkopa-green">{network}</span>
+              </p>
             )}
-
-            {/* Auto-polling indicator */}
-            <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-4">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Waiting for payment...</span>
-            </div>
-
-            <div className="flex gap-2">
-              <Link
-                href={`/payment/status?reference=${reference}&loanId=${loanId}`}
-                className="flex-1 gradient-mkopa text-white py-2 rounded-lg font-semibold text-sm text-center"
-              >
-                Check Status
-              </Link>
-              <button
-                onClick={() => { setStkSent(false); setReference(''); }}
-                className="px-4 py-2 border rounded-lg font-semibold text-sm"
-              >
-                Cancel
-              </button>
-            </div>
           </div>
-        )}
+
+          <button
+            onClick={handleGetLoan}
+            disabled={processing || !phone || phone.length < 10}
+            className="w-full gradient-mkopa text-white py-3 rounded-lg font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
+          >
+            {processing ? (
+              <><Loader2 className="w-5 h-5 animate-spin" /> Processing...</>
+            ) : (
+              <><Smartphone className="w-5 h-5" /> Get Loan</>
+            )}
+          </button>
+
+          {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
+
+          <div className="mt-4 p-3 bg-green-50 rounded-lg text-xs text-green-700">
+            <p className="font-semibold mb-1">How it works:</p>
+            <ol className="list-decimal list-inside space-y-0.5">
+              <li>Enter your M-Pesa / Airtel phone number</li>
+              <li>Tap "Get Loan" — a payment page opens</li>
+              <li>STK push prompt appears on your phone</li>
+              <li>Enter your M-Pesa / Airtel PIN</li>
+              <li>Money deducted automatically — done!</li>
+            </ol>
+            <p className="mt-2 font-semibold">Supported: Safaricom M-Pesa · Airtel Money</p>
+          </div>
+        </div>
       </div>
     </div>
   );

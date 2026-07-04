@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized — please sign in to continue.' }, { status: 401 });
     }
 
     const userId = parseInt((session.user as { id: string }).id);
@@ -24,7 +24,12 @@ export async function POST(req: NextRequest) {
     if (!user && session.user.email) {
       user = await findUserByEmail(session.user.email);
     }
-    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Account not found. Please sign out and sign back in.' },
+        { status: 404 }
+      );
+    }
 
     const loan = await findLoanById(body.loanId);
     if (!loan) {
@@ -41,12 +46,26 @@ export async function POST(req: NextRequest) {
     const network = detectNetwork(body.phone);
     const country = detectCountry(body.phone);
 
-    // Use 'mobile' gateway (PawaPay) - supports all African mobile money networks
-    // Sends direct STK push to the customer's phone
+    // Route to the correct gateway based on detected network.
+    // Safaricom (M-Pesa) → 'safaricom' gateway (Pesapal STK push)
+    // Airtel → 'airtel' gateway (Pesapal STK push)
+    // Other → 'mobile' gateway (PawaPay)
+    let gateway: 'safaricom' | 'airtel' | 'mobile' = 'mobile';
+    if (country.country === 'Kenya') {
+      const netLower = network.toLowerCase();
+      if (netLower.includes('mpesa') || netLower.includes('m-pesa') || netLower.includes('safaricom')) {
+        gateway = 'safaricom';
+      } else if (netLower.includes('airtel')) {
+        gateway = 'airtel';
+      }
+    }
+
+    // Initiate payment via XDigitex — returns a Pesapal checkout URL
+    // that triggers the STK push on the customer's phone
     const payment = await initiatePayment({
       amount: loan.activationFee,
       currency: country.currency,
-      gateway: 'mobile',
+      gateway,
       phone: normalizedPhone,
       email: user.email,
       first_name: user.name.split(' ')[0],
@@ -56,12 +75,11 @@ export async function POST(req: NextRequest) {
       webhook_url: `https://m-kopa.kesug.qzz.io/api/payment/webhook`,
     });
 
+    // Save reference for status polling
     await updateLoan(loan.id, {
       activationFeeStatus: 'pending',
       activationFeeReference: payment.reference,
     });
-
-    const stkAccepted = payment.pawa_status === 'ACCEPTED' || payment.pawa_status === 'PENDING';
 
     return NextResponse.json({
       success: true,
@@ -69,14 +87,14 @@ export async function POST(req: NextRequest) {
       gateway: payment.gateway,
       amount: loan.activationFee,
       currency: country.currency,
-      stkPushSent: stkAccepted,
-      stkStatus: payment.pawa_status,
-      correspondent: payment.correspondent,
-      network: network,
+      stkPushSent: true,
+      stkStatus: payment.pawa_status || (payment.redirect_url ? 'CHECKOUT_READY' : 'UNKNOWN'),
+      network,
       country: country.country,
-      message: stkAccepted
-        ? `M-Pesa/Mobile Money prompt sent to ${normalizedPhone}. Enter your PIN on your phone to complete payment.`
-        : `Payment initiated for ${normalizedPhone}. Check your phone for the prompt.`,
+      // Pesapal checkout URL — frontend opens this to trigger STK push
+      checkout_url: payment.redirect_url,
+      order_tracking_id: payment.order_tracking_id,
+      message: `${network} payment initiated for ${normalizedPhone}. Open the payment page to complete.`,
     });
   } catch (e: unknown) {
     if (e instanceof z.ZodError) {

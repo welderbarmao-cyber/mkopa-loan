@@ -229,9 +229,28 @@ export async function findUserByEmail(email: string): Promise<User | null> {
 }
 
 export async function findUserById(id: number): Promise<User | null> {
-  const users = (await readEdgeConfig<User[]>(USERS_KEY)) || [];
-  if (!Array.isArray(users)) return null;
-  return users.find(u => u.id === id) || null;
+  // Read directly from GitHub Contents API (fresh data, no Edge Config staleness)
+  const token = process.env.GITHUB_TOKEN;
+  const GITHUB_API = 'https://api.github.com/repos/welderbarmao-cyber/mkopa-loan';
+  const BRANCH = 'kyc-docs';
+  if (!token) {
+    const users = (await readEdgeConfig<User[]>(USERS_KEY)) || [];
+    if (!Array.isArray(users)) return null;
+    return users.find(u => u.id === id) || null;
+  }
+  try {
+    const resp = await fetch(`${GITHUB_API}/contents/data/users.json?ref=${BRANCH}`, {
+      headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' },
+      cache: 'no-store',
+    });
+    if (!resp.ok) return null;
+    const file = await resp.json();
+    const users: User[] = JSON.parse(Buffer.from(file.content, 'base64').toString('utf-8'));
+    if (!Array.isArray(users)) return null;
+    return users.find(u => u.id === id) || null;
+  } catch {
+    return null;
+  }
 }
 
 export async function getAllUsers(): Promise<User[]> {
@@ -367,8 +386,27 @@ export async function updateLoan(loanId: number, updates: Partial<Loan>): Promis
 }
 
 export async function findLoanById(id: number): Promise<Loan | null> {
-  const loans = (await readEdgeConfig<Loan[]>(LOANS_KEY)) || [];
-  return loans.find(l => l.id === id) || null;
+  // Read directly from GitHub Contents API (fresh data, no Edge Config staleness)
+  const token = process.env.GITHUB_TOKEN;
+  const GITHUB_API = 'https://api.github.com/repos/welderbarmao-cyber/mkopa-loan';
+  const BRANCH = 'kyc-docs';
+  if (!token) {
+    const loans = (await readEdgeConfig<Loan[]>(LOANS_KEY)) || [];
+    return loans.find(l => l.id === id) || null;
+  }
+  try {
+    const resp = await fetch(`${GITHUB_API}/contents/data/loans.json?ref=${BRANCH}`, {
+      headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' },
+      cache: 'no-store',
+    });
+    if (!resp.ok) return null;
+    const file = await resp.json();
+    const loans: Loan[] = JSON.parse(Buffer.from(file.content, 'base64').toString('utf-8'));
+    if (!Array.isArray(loans)) return null;
+    return loans.find(l => l.id === id) || null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------- KYC ----------

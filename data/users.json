@@ -373,5 +373,16 @@
     "kycStatus": "none",
     "loanLimit": 0,
     "createdAt": "2026-07-04T07:07:26.325Z"
+  },
+  {
+    "id": 56,
+    "email": "finaltest_1783148968@test.com",
+    "name": "Final Test User",
+    "passwordHash": "$2b$12$3NCrR9xC7FV3ZTSuGxnpq.zkmBq04oSk4QyUOwYrZnDOUPEDz5ck2",
+    "role": "customer",
+    "phone": "0712345678",
+    "kycStatus": "none",
+    "loanLimit": 0,
+    "createdAt": "2026-07-04T07:09:29.368Z"
   }
 ]

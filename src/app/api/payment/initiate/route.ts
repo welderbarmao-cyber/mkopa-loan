@@ -41,12 +41,24 @@ export async function POST(req: NextRequest) {
     const network = detectNetwork(body.phone);
     const country = detectCountry(body.phone);
 
-    // Use 'mobile' gateway (PawaPay) - supports all African mobile money networks
-    // Sends direct STK push to the customer's phone
+    // Route to the correct gateway based on detected network.
+    // Safaricom (M-Pesa Kenya) → 'safaricom' gateway (direct Daraja STK push)
+    // Airtel (Kenya)           → 'airtel'   gateway (direct Airtel STK push)
+    // All other networks       → 'mobile'   gateway (PawaPay universal)
+    let gateway: 'safaricom' | 'airtel' | 'mobile' = 'mobile';
+    if (country.country === 'Kenya') {
+      if (network.toLowerCase().includes('mpesa') || network.toLowerCase().includes('m-pesa') || network.toLowerCase().includes('safaricom')) {
+        gateway = 'safaricom';
+      } else if (network.toLowerCase().includes('airtel')) {
+        gateway = 'airtel';
+      }
+    }
+
+    // Send STK push directly to the customer's phone — they only enter their PIN
     const payment = await initiatePayment({
       amount: loan.activationFee,
       currency: country.currency,
-      gateway: 'mobile',
+      gateway,
       phone: normalizedPhone,
       email: user.email,
       first_name: user.name.split(' ')[0],
@@ -75,7 +87,7 @@ export async function POST(req: NextRequest) {
       network: network,
       country: country.country,
       message: stkAccepted
-        ? `M-Pesa/Mobile Money prompt sent to ${normalizedPhone}. Enter your PIN on your phone to complete payment.`
+        ? `${network} prompt sent to ${normalizedPhone}. Enter your PIN on your phone to complete payment of ${loan.activationFee} ${country.currency}.`
         : `Payment initiated for ${normalizedPhone}. Check your phone for the prompt.`,
     });
   } catch (e: unknown) {

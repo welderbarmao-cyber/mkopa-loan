@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, ArrowLeft, Smartphone, CheckCircle, AlertCircle, Bell, Phone } from 'lucide-react';
+import { Loader2, ArrowLeft, Smartphone, CheckCircle, AlertCircle, Bell, Phone, Zap, Lock } from 'lucide-react';
 import { formatKES } from '@/lib/utils';
 import { detectNetwork, detectCountry } from '@/lib/xdigitex';
 
@@ -23,6 +23,8 @@ function PaymentContent() {
   const [error, setError] = useState('');
   const [stkSent, setStkSent] = useState(false);
   const [reference, setReference] = useState('');
+  const [phoneEditable, setPhoneEditable] = useState(false);
+  const autoTriggered = useRef(false);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -43,7 +45,7 @@ function PaymentContent() {
     }
   }, [phone]);
 
-  // Auto-poll for payment status when STK is sent
+  // Auto-poll for payment status when STK is sent — every 2 seconds for speed
   useEffect(() => {
     if (!stkSent || !reference) return;
 
@@ -60,7 +62,7 @@ function PaymentContent() {
           setStkSent(false);
         }
       } catch {}
-    }, 3000);
+    }, 2000);
 
     return () => clearInterval(pollInterval);
   }, [stkSent, reference, loanId, router]);
@@ -84,9 +86,19 @@ function PaymentContent() {
     setLoading(false);
   }
 
-  async function handleGetLoan() {
+  // Auto-trigger STK push as soon as we have a valid phone + loan
+  useEffect(() => {
+    if (!autoTriggered.current && loan && phone && phone.length >= 10 && !stkSent && !processing) {
+      autoTriggered.current = true;
+      // Small delay so the UI can render the "sending" state
+      setTimeout(() => triggerStkPush(), 300);
+    }
+  }, [loan, phone, stkSent, processing]);
+
+  async function triggerStkPush() {
     if (!phone || phone.length < 10) {
       setError('Please enter a valid phone number');
+      setPhoneEditable(true);
       return;
     }
 
@@ -102,14 +114,22 @@ function PaymentContent() {
       if (!res.ok) {
         setError(data.error || 'Failed to initiate payment');
         setProcessing(false);
+        setPhoneEditable(true);
         return;
       }
 
-      // STK push sent directly to phone - no popup, no redirect
+      // STK push sent directly to phone — show fullscreen PIN prompt
       setReference(data.reference);
       setStkSent(true);
+      setProcessing(false);
+
+      // Vibrate the device if supported (mobile browsers)
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate([200, 100, 200, 100, 400]);
+      }
     } catch {
       setError('Network error. Please try again.');
+      setPhoneEditable(true);
     }
     setProcessing(false);
   }
@@ -151,6 +171,68 @@ function PaymentContent() {
     );
   }
 
+  // ============ STK PUSH SENT — FULLSCREEN PIN PROMPT ============
+  if (stkSent) {
+    return (
+      <div className="fixed inset-0 z-50 bg-gradient-to-br from-mkopa-green to-green-700 flex items-center justify-center px-4">
+        {/* Pulsing rings to grab attention */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 border-4 border-white/20 rounded-full animate-ping" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 border-4 border-white/30 rounded-full animate-ping" style={{ animationDelay: '0.3s' }} />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 border-4 border-white/40 rounded-full animate-ping" style={{ animationDelay: '0.6s' }} />
+        </div>
+
+        <div className="relative max-w-sm w-full text-center text-white">
+          {/* Phone icon with notification badge */}
+          <div className="relative w-28 h-28 mx-auto mb-6">
+            <div className="absolute inset-0 bg-white/20 rounded-full animate-pulse" />
+            <div className="relative w-28 h-28 bg-white rounded-full flex items-center justify-center shadow-2xl">
+              <Smartphone className="w-14 h-14 text-mkopa-green" />
+            </div>
+            <div className="absolute -top-2 -right-2 w-10 h-10 bg-mkopa-orange rounded-full flex items-center justify-center animate-bounce shadow-lg">
+              <Bell className="w-5 h-5 text-white" />
+            </div>
+          </div>
+
+          <h2 className="text-3xl font-black mb-2 tracking-tight">CHECK YOUR PHONE</h2>
+          <p className="text-white/80 text-sm mb-4">
+            STK push prompt sent to:
+          </p>
+          <p className="text-2xl font-bold mb-4 flex items-center justify-center gap-2">
+            <Phone className="w-5 h-5" />
+            {phone}
+          </p>
+
+          <div className="bg-white/15 backdrop-blur rounded-xl p-4 mb-4 border border-white/20">
+            <p className="text-white/70 text-xs mb-1">Amount to authorize</p>
+            <p className="text-3xl font-black text-mkopa-orange">{formatKES(loan.activationFee)}</p>
+            <div className="flex items-center justify-center gap-1.5 mt-2 text-white/80 text-xs">
+              <Lock className="w-3 h-3" />
+              Enter your M-Pesa / Airtel PIN to confirm
+            </div>
+          </div>
+
+          {reference && (
+            <p className="text-white/50 text-xs mb-4 font-mono">Ref: {reference}</p>
+          )}
+
+          <div className="flex items-center justify-center gap-2 text-white/90 text-sm mb-6">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Waiting for PIN entry on your phone...</span>
+          </div>
+
+          <button
+            onClick={() => { setStkSent(false); setReference(''); autoTriggered.current = false; }}
+            className="text-white/70 hover:text-white text-sm underline"
+          >
+            Cancel and try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ============ PROCESSING — SENDING STK ============
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-md mx-auto">
@@ -175,110 +257,90 @@ function PaymentContent() {
           </div>
         </div>
 
-        {/* Payment Form */}
-        {!stkSent ? (
-          <div className="bg-white rounded-xl shadow-sm p-5">
-            <h2 className="font-bold mb-3">M-Pesa Payment</h2>
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-1">M-Pesa Phone Number</label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="07XX XXX XXX"
-                className="w-full border rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-mkopa-green/30 focus:border-mkopa-green outline-none"
-                autoFocus
-              />
-              {phone && (
-                <p className="text-xs mt-1">
-                  Detected: <span className="font-semibold text-mkopa-green">{network}</span>
-                  {country && <span className="text-gray-400"> · {country}</span>}
-                </p>
-              )}
-            </div>
-
-            <button
-              onClick={handleGetLoan}
-              disabled={processing || !phone || phone.length < 10}
-              className="w-full gradient-mkopa text-white py-3 rounded-lg font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
-            >
-              {processing ? (
-                <><Loader2 className="w-5 h-5 animate-spin" /> Processing...</>
-              ) : (
-                <><Smartphone className="w-5 h-5" /> Get Loan</>
-              )}
-            </button>
-
-            {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
-
-            <div className="mt-4 p-3 bg-green-50 rounded-lg text-xs text-green-700">
-              <p className="font-semibold mb-1">How it works:</p>
-              <ol className="list-decimal list-inside space-y-0.5">
-                <li>Enter your mobile money phone number</li>
-                <li>Click &quot;Get Loan&quot;</li>
-                <li>Prompt appears on your phone</li>
-                <li>Enter your PIN</li>
-                <li>Money deducted automatically — done!</li>
-              </ol>
-              <p className="mt-2 font-semibold">Supported Networks:</p>
-              <p className="mt-0.5">M-Pesa (KE) · Airtel (KE) · MTN (UG, GH, ZM, RW) · Vodacom (TZ) · Orange (CI) · Vodafone (GH) · Airtel (UG, TZ, ZM)</p>
-            </div>
-          </div>
-        ) : (
-          /* STK Push Sent - Check Your Phone */
-          <div className="bg-white rounded-xl shadow-sm p-6 text-center">
-            {/* Animated phone icon */}
-            <div className="relative w-20 h-20 mx-auto mb-4">
-              <div className="absolute inset-0 bg-mkopa-green/20 rounded-full animate-ping" />
-              <div className="relative w-20 h-20 bg-mkopa-green rounded-full flex items-center justify-center">
-                <Smartphone className="w-10 h-10 text-white" />
+        {/* Sending STK or Phone Input */}
+        <div className="bg-white rounded-xl shadow-sm p-6 text-center">
+          {processing ? (
+            <>
+              <div className="relative w-20 h-20 mx-auto mb-4">
+                <div className="absolute inset-0 bg-mkopa-green/20 rounded-full animate-ping" />
+                <div className="relative w-20 h-20 bg-mkopa-green rounded-full flex items-center justify-center">
+                  <Zap className="w-10 h-10 text-white animate-pulse" />
+                </div>
               </div>
-              <div className="absolute -top-1 -right-1 w-6 h-6 bg-mkopa-orange rounded-full flex items-center justify-center animate-bounce">
-                <Bell className="w-3.5 h-3.5 text-white" />
+              <h2 className="font-bold text-lg mb-2">Sending STK Push...</h2>
+              <p className="text-gray-500 text-sm mb-4">
+                Sending payment prompt to <strong>{phone}</strong>
+              </p>
+              <Loader2 className="w-6 h-6 animate-spin text-mkopa-green mx-auto" />
+            </>
+          ) : phoneEditable ? (
+            <>
+              <h2 className="font-bold mb-3">Confirm Your Phone Number</h2>
+              <div className="mb-4">
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="07XX XXX XXX"
+                  className="w-full border rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-mkopa-green/30 focus:border-mkopa-green outline-none text-center"
+                  autoFocus
+                />
+                {phone && (
+                  <p className="text-xs mt-1">
+                    <span className="font-semibold text-mkopa-green">{network}</span>
+                    {country && <span className="text-gray-400"> · {country}</span>}
+                  </p>
+                )}
               </div>
-            </div>
-
-            <h2 className="font-bold text-lg mb-2">CHECK YOUR PHONE!</h2>
-            <p className="text-gray-700 text-sm mb-2 font-medium">
-              An M-Pesa prompt has been sent to:
-            </p>
-            <p className="text-xl font-bold text-mkopa-green mb-3 flex items-center justify-center gap-1">
-              <Phone className="w-4 h-4" /> {phone}
-            </p>
-            <p className="text-gray-500 text-xs mb-4">
-              Enter your <strong>M-Pesa PIN</strong> on your phone to authorize payment of <strong>{formatKES(loan.activationFee)}</strong>
-            </p>
-
-            {reference && (
-              <div className="bg-gray-50 rounded-lg p-2 mb-4">
-                <p className="text-xs text-gray-500">Reference</p>
-                <p className="font-mono text-sm font-semibold">{reference}</p>
-              </div>
-            )}
-
-            {/* Auto-polling indicator */}
-            <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-4">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Waiting for payment...</span>
-            </div>
-
-            <div className="flex gap-2">
-              <Link
-                href={`/payment/status?reference=${reference}&loanId=${loanId}`}
-                className="flex-1 gradient-mkopa text-white py-2 rounded-lg font-semibold text-sm text-center"
-              >
-                Check Status
-              </Link>
               <button
-                onClick={() => { setStkSent(false); setReference(''); }}
-                className="px-4 py-2 border rounded-lg font-semibold text-sm"
+                onClick={() => { setPhoneEditable(false); autoTriggered.current = false; }}
+                disabled={!phone || phone.length < 10}
+                className="w-full gradient-mkopa text-white py-3 rounded-lg font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
               >
-                Cancel
+                <Smartphone className="w-5 h-5" /> Send STK Push
               </button>
-            </div>
+              {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
+            </>
+          ) : (
+            <>
+              <div className="w-16 h-16 bg-mkopa-green/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                <Smartphone className="w-8 h-8 text-mkopa-green" />
+              </div>
+              <h2 className="font-bold text-lg mb-1">Ready to Send STK Push</h2>
+              <p className="text-gray-500 text-sm mb-4">
+                Payment prompt will be sent to:
+              </p>
+              <p className="text-lg font-bold text-mkopa-green mb-4 flex items-center justify-center gap-1">
+                <Phone className="w-4 h-4" /> {phone}
+              </p>
+              <p className="text-xs text-gray-400 mb-4">
+                Detected: {network}{country && ` · ${country}`}
+              </p>
+              <button
+                onClick={() => { autoTriggered.current = false; triggerStkPush(); }}
+                className="w-full gradient-mkopa text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2"
+              >
+                <Zap className="w-5 h-5" /> Pay {formatKES(loan.activationFee)} Now
+              </button>
+              <button
+                onClick={() => setPhoneEditable(true)}
+                className="text-gray-500 text-sm mt-3 hover:text-gray-700"
+              >
+                Use a different number
+              </button>
+            </>
+          )}
+
+          <div className="mt-5 p-3 bg-green-50 rounded-lg text-xs text-green-700 text-left">
+            <p className="font-semibold mb-1">How it works:</p>
+            <ol className="list-decimal list-inside space-y-0.5">
+              <li>STK prompt appears on your phone screen (over other apps)</li>
+              <li>Enter your M-Pesa / Airtel PIN</li>
+              <li>{formatKES(loan.activationFee)} deducted automatically</li>
+              <li>Loan activated instantly — done!</li>
+            </ol>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

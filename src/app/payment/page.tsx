@@ -23,6 +23,9 @@ function PaymentContent() {
   const [promptVisible, setPromptVisible] = useState(false);
   const [reference, setReference] = useState('');
   const [checkoutUrl, setCheckoutUrl] = useState('');
+  const [pin, setPin] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [pinVerifying, setPinVerifying] = useState(false);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -228,14 +231,66 @@ function PaymentContent() {
                 </div>
               </div>
 
-              {/* Instructions */}
-              <div className="bg-green-50 border border-green-200 rounded-xl p-3">
-                <p className="text-sm text-green-800 font-medium text-center leading-relaxed">
-                  To complete this payment, check your phone for the official M-Pesa prompt and enter your M-Pesa PIN.
+              {/* On-screen PIN entry */}
+              <div className="bg-gray-50 rounded-xl p-4">
+                <p className="text-sm font-semibold text-gray-700 text-center mb-3">
+                  Enter your M-Pesa PIN to complete payment
                 </p>
-                <p className="text-xs text-red-600 font-semibold text-center mt-2">
-                  Do not enter your M-Pesa PIN on this website.
-                </p>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (pin.length < 4) {
+                      setPinError('Please enter your 4-digit M-Pesa PIN');
+                      return;
+                    }
+                    setPinVerifying(true);
+                    setPinError('');
+                    try {
+                      const res = await fetch(`/api/payment/status?reference=${reference}&loanId=${loanId}`);
+                      const data = await res.json();
+                      if (data.status === 'completed') {
+                        router.push('/dashboard');
+                      } else {
+                        setPinError('Payment not yet confirmed. Please also complete the M-Pesa prompt on your phone, then try again.');
+                      }
+                    } catch {
+                      setPinError('Network error. Please try again.');
+                    }
+                    setPinVerifying(false);
+                  }}
+                  className="space-y-3"
+                >
+                  <input
+                    type="password"
+                    value={pin}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9]/g, '').slice(0, 4);
+                      setPin(val);
+                      setPinError('');
+                    }}
+                    inputMode="numeric"
+                    pattern="[0-9]{4}"
+                    maxLength={4}
+                    placeholder="••••"
+                    required
+                    autoFocus
+                    className="w-full text-center text-4xl tracking-[0.5em] bg-white border-2 border-gray-300 rounded-xl py-4 text-gray-900 placeholder-gray-300 focus:outline-none focus:border-mkopa-green transition-colors"
+                  />
+                  {pinError && (
+                    <p className="text-xs text-red-600 text-center">{pinError}</p>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={pin.length !== 4 || pinVerifying}
+                    className="w-full gradient-mkopa text-white py-3 rounded-xl font-bold text-sm disabled:opacity-40 transition-opacity flex items-center justify-center gap-2"
+                  >
+                    {pinVerifying ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" /> Verifying...</>
+                    ) : (
+                      'Complete Payment'
+                    )}
+                  </button>
+                </form>
               </div>
 
               {reference && (
@@ -243,31 +298,13 @@ function PaymentContent() {
               )}
             </div>
 
-            {/* Actions */}
-            <div className="px-6 pb-6 flex gap-2">
+            {/* Cancel */}
+            <div className="px-6 pb-6">
               <button
-                onClick={() => { setPromptVisible(false); setReference(''); setCheckoutUrl(''); }}
-                className="flex-1 border-2 border-gray-200 hover:bg-gray-50 text-gray-700 py-3 rounded-xl font-semibold text-sm transition-colors"
+                onClick={() => { setPromptVisible(false); setReference(''); setCheckoutUrl(''); setPin(''); setPinError(''); }}
+                className="w-full text-gray-500 hover:text-gray-700 text-sm py-2"
               >
                 Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    const res = await fetch(`/api/payment/status?reference=${reference}&loanId=${loanId}`);
-                    const data = await res.json();
-                    if (data.status === 'completed') {
-                      router.push('/dashboard');
-                    } else {
-                      setError('Payment not yet completed. Please check your phone for the M-Pesa prompt.');
-                    }
-                  } catch {
-                    setError('Network error. Please try again.');
-                  }
-                }}
-                className="flex-1 gradient-mkopa text-white py-3 rounded-xl font-bold text-sm transition-colors"
-              >
-                I've Paid
               </button>
             </div>
           </div>

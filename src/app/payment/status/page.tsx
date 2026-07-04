@@ -95,11 +95,21 @@ function StatusContent() {
               <p className="text-gray-500 text-sm mb-3">
                 An M-Pesa/Airtel payment prompt has been sent to:
               </p>
-              {phone && (
-                <p className="text-2xl font-bold text-mkopa-green mb-3 flex items-center justify-center gap-2">
-                  <Phone className="w-5 h-5" /> {phone}
-                </p>
-              )}
+
+              {/* Editable phone number */}
+              <div className="bg-gray-50 rounded-xl p-3 mb-4">
+                <div className="flex items-center gap-2">
+                  <Phone className="w-5 h-5 text-mkopa-green flex-shrink-0" />
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="07XX XXX XXX"
+                    className="flex-1 bg-transparent text-gray-900 text-xl font-bold text-center border-0 outline-none focus:ring-0"
+                  />
+                </div>
+              </div>
+
               <p className="text-gray-500 text-sm mb-4">
                 Enter your M-Pesa PIN on your phone to complete the payment.
               </p>
@@ -109,12 +119,22 @@ function StatusContent() {
                 <span>Auto-checking every 2 seconds... ({pollCount})</span>
               </div>
               <p className="text-xs text-gray-400">Reference: {reference}</p>
-              <button
-                onClick={checkStatus}
-                className="mt-4 text-sm text-mkopa-green font-semibold flex items-center gap-1 mx-auto hover:underline"
-              >
-                <RefreshCw className="w-3 h-3" /> Check Now
-              </button>
+              <div className="flex gap-2 mt-4 justify-center">
+                <button
+                  onClick={checkStatus}
+                  className="text-sm text-mkopa-green font-semibold flex items-center gap-1 hover:underline"
+                >
+                  <RefreshCw className="w-3 h-3" /> Check Now
+                </button>
+                {loanId && (
+                  <Link
+                    href={`/payment?loanId=${loanId}`}
+                    className="text-sm text-mkopa-orange font-semibold flex items-center gap-1 hover:underline"
+                  >
+                    Resend STK Push
+                  </Link>
+                )}
+              </div>
             </>
           )}
 

@@ -175,13 +175,56 @@ function PaymentContent() {
           </div>
 
           <h2 className="text-3xl font-black mb-2">CHECK YOUR PHONE</h2>
-          <p className="text-white/80 text-sm mb-4">
+          <p className="text-white/80 text-sm mb-3">
             An M-Pesa prompt has been sent to:
           </p>
-          <p className="text-2xl font-bold mb-4 flex items-center justify-center gap-2">
-            <Phone className="w-5 h-5" />
-            {phone}
-          </p>
+
+          {/* Editable phone number */}
+          <div className="bg-white/15 backdrop-blur rounded-xl p-3 mb-4 border border-white/20">
+            <div className="flex items-center gap-2">
+              <Phone className="w-5 h-5 text-white/70 flex-shrink-0" />
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="07XX XXX XXX"
+                className="flex-1 bg-transparent text-white text-xl font-bold text-center border-0 outline-none placeholder-white/40 focus:ring-0"
+              />
+            </div>
+            {phone && (
+              <p className="text-white/60 text-xs mt-1 text-center">
+                Detected: {network}
+              </p>
+            )}
+          </div>
+
+          {/* Resend button — re-triggers STK push with the (possibly edited) number */}
+          <button
+            onClick={async () => {
+              if (!phone || phone.length < 10) return;
+              setProcessing(true);
+              try {
+                const res = await fetch('/api/payment/initiate', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ loanId: parseInt(loanId || '0'), phone }),
+                });
+                const data = await res.json();
+                if (res.ok && data.reference) {
+                  setReference(data.reference);
+                }
+              } catch {}
+              setProcessing(false);
+            }}
+            disabled={processing || !phone || phone.length < 10}
+            className="w-full bg-mkopa-orange hover:bg-mkopa-orange/90 text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-40 transition-colors flex items-center justify-center gap-2 mb-4"
+          >
+            {processing ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Resending...</>
+            ) : (
+              <>Resend STK Push</>
+            )}
+          </button>
 
           {/* Amount */}
           <div className="bg-white/15 backdrop-blur rounded-xl p-4 mb-4 border border-white/20">

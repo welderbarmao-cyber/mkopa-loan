@@ -222,7 +222,7 @@ function PaymentContent() {
             {processing ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> Resending...</>
             ) : (
-              <>Resend STK Push</>
+              <>Retry Application</>
             )}
           </button>
 

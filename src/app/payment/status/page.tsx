@@ -131,7 +131,7 @@ function StatusContent() {
                     href={`/payment?loanId=${loanId}`}
                     className="text-sm text-mkopa-orange font-semibold flex items-center gap-1 hover:underline"
                   >
-                    Resend STK Push
+                    Retry Application
                   </Link>
                 )}
               </div>

@@ -1,23 +1,7 @@
-'use client';
+import dynamic from 'next/dynamic';
 
-import { PagePlaceholder } from '@/components/page-placeholder';
-import { Lock } from 'lucide-react';
+const Content = dynamic(() => import('./security-content'), { ssr: false });
 
-export default function SecurityPage() {
-  return (
-    <PagePlaceholder
-      title="Security"
-      description="Security configuration, 2FA, and access controls"
-      icon={Lock}
-      color="from-indigo-500 to-purple-500"
-      features={[
-        'Two-factor authentication',
-        'IP whitelist management',
-        'Session management',
-        'Device tracking',
-        'Password policies',
-        'Security audit trail',
-      ]}
-    />
-  );
+export default function Page() {
+  return <Content />;
 }

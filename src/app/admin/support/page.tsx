@@ -1,23 +1,7 @@
-'use client';
+import dynamic from 'next/dynamic';
 
-import { PagePlaceholder } from '@/components/page-placeholder';
-import { LifeBuoy } from 'lucide-react';
+const Content = dynamic(() => import('./support-content'), { ssr: false });
 
-export default function SupportPage() {
-  return (
-    <PagePlaceholder
-      title="Support Tickets"
-      description="Manage customer support requests and tickets"
-      icon={LifeBuoy}
-      color="from-cyan-500 to-blue-500"
-      features={[
-        'Ticket management',
-        'Priority queues',
-        'SLA tracking',
-        'Knowledge base',
-        'Agent assignment',
-        'Resolution metrics',
-      ]}
-    />
-  );
+export default function Page() {
+  return <Content />;
 }

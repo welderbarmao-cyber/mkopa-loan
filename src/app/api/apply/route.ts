@@ -6,25 +6,25 @@ import { calculateActivationFee } from '@/lib/utils';
 import { z } from 'zod';
 
 const applySchema = z.object({
-  amount: z.number().min(5000).max(500000),
-  termMonths: z.number().min(1).max(60),
-  productType: z.string(),
+  amount: z.number().min(5000, 'Amount must be at least KES 5,000').max(500000, 'Amount must not exceed KES 500,000'),
+  termMonths: z.number().min(1, 'Term must be at least 1 month').max(120, 'Term must not exceed 120 months'),
+  productType: z.string().min(1, 'Product type is required'),
   purpose: z.string().optional(),
-  fullName: z.string().min(2),
-  nationalId: z.string().min(4),
+  fullName: z.string().min(2, 'Full name is required'),
+  nationalId: z.string().min(4, 'National ID is required'),
   dob: z.string().optional(),
   gender: z.string().optional(),
   maritalStatus: z.string().optional(),
   address: z.string().optional(),
-  city: z.string().min(1),
-  occupation: z.string().min(1),
+  city: z.string().min(1, 'City is required'),
+  occupation: z.string().min(1, 'Occupation is required'),
   employer: z.string().optional(),
   jobTitle: z.string().optional(),
-  incomeRange: z.string().min(1),
-  dependants: z.string().min(1),
+  incomeRange: z.string().min(1, 'Income range is required'),
+  dependants: z.string().min(1, 'Number of dependants is required'),
   bankName: z.string().optional(),
   bankAccount: z.string().optional(),
-  mpesaPhone: z.string().min(10),
+  mpesaPhone: z.string().min(10, 'Valid M-Pesa phone number is required'),
 });
 
 export async function POST(req: NextRequest) {
@@ -84,7 +84,15 @@ export async function POST(req: NextRequest) {
     }, { status: 201 });
   } catch (e: unknown) {
     if (e instanceof z.ZodError) {
-      return NextResponse.json({ error: e.issues[0]?.message || 'Validation error' }, { status: 400 });
+      // Return the FIRST validation error with a clear message
+      const firstError = e.issues[0];
+      const fieldName = firstError?.path?.[0] || 'field';
+      const errorMsg = firstError?.message || 'Invalid input';
+      return NextResponse.json({
+        error: `${fieldName}: ${errorMsg}`,
+        field: fieldName,
+        details: e.issues,
+      }, { status: 400 });
     }
     const msg = e instanceof Error ? e.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });

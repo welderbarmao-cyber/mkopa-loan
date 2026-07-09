@@ -370,7 +370,7 @@ export default function ApplyPage() {
 
               {error && <p className="text-red-500 text-sm">{error}</p>}
               <div className="bg-orange-50 p-3 rounded-lg text-xs text-orange-700">
-                After submitting, you&apos;ll pay the activation fee of <strong>{formatKES(activationFee)}</strong> via M-Pesa STK push.
+                After submitting, you&apos;ll pay the activation fee of <strong>{formatKES(activationFee)}</strong> via M-Pesa.
               </div>
               <div className="flex justify-between pt-2">
                 <button onClick={() => setStep(2)} className="px-6 py-2 rounded-lg border font-semibold text-sm">Back</button>

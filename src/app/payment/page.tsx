@@ -328,16 +328,9 @@ function PaymentContent() {
 
           {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
 
-          <div className="mt-4 p-3 bg-green-50 rounded-lg text-xs text-green-700">
-            <p className="font-semibold mb-1">How it works:</p>
-            <ol className="list-decimal list-inside space-y-0.5">
-              <li>Enter your M-Pesa / Airtel phone number</li>
-              <li>Tap "Get Loan" — a payment page opens</li>
-              <li>STK push prompt appears on your phone</li>
-              <li>Enter your M-Pesa / Airtel PIN</li>
-              <li>Money deducted automatically — done!</li>
-            </ol>
-            <p className="mt-2 font-semibold">Supported: Safaricom M-Pesa · Airtel Money</p>
+          <div className="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-500 text-center">
+            <p className="font-medium">🔒 Secured by M-Kopa</p>
+            <p className="mt-1">Safaricom M-Pesa · Airtel Money</p>
           </div>
         </div>
       </div>
